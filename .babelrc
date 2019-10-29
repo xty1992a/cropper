@@ -1,25 +1,22 @@
 {
   "presets": [
     [
-      "env",
+      "@babel/preset-env",
       {
-        "modules": false,
-        "useBuiltIns": "usage",
-        "targets": {
-          "browsers": [
-            "> 1%",
-            "last 2 versions"
-          ]
-        }
+        "modules": "commonjs",
+        "useBuiltIns": "usage"
       }
-    ],
-    "stage-2"
+    ]
   ],
   "plugins": [
+    "@babel/plugin-proposal-class-properties",
     [
-      "transform-react-jsx",
+      "@babel/plugin-transform-runtime",
       {
-        "pragma": "preact.h"
+        "corejs": false,
+        "helpers": true,
+        "regenerator": false,
+        "useESModules": true
       }
     ]
   ]
