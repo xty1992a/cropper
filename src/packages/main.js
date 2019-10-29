@@ -1,7 +1,7 @@
 import './index.less'
 import {isMobile} from './dom.js'
 
-// 允许类绑定回调
+// 事件基类
 class EmitAble {
   task = {};
 
@@ -17,9 +17,13 @@ class EmitAble {
 const defaultOptions = {};
 
 // region helper
-const createImage = (url, opt) => new Promise(resolve => {
+const createImage = (url, opt = {}) => new Promise(resolve => {
   let img = document.createElement('img');
   img.src = url;
+  if (opt.width && opt.height) {
+	img.style.width = opt.width + 'px';
+	img.style.height = opt.height + 'px';
+  }
   img.addEventListener('load', function () {
 	resolve(img);
   });
@@ -58,15 +62,11 @@ export default class Cropper extends EmitAble {
 	origin: {
 	  x: 0, y: 0,
 	},
-	oldOrigin: {
-	  x: 0, y: 0,
-	},
 	left: 0,
 	top: 0,
   };
 
   constructor(el, opt) {
-
 	super();
 	this.$el = el;
 	el.classList.add('cropper-bg');
@@ -83,10 +83,9 @@ export default class Cropper extends EmitAble {
 	}
 
 	let cvs = this.$canvas = document.createElement('canvas');
+
 	this.imageOptions.height = cvs.height = height;
 	this.imageOptions.width = cvs.width = width;
-	// this.imageOptions.left = width / 2;
-	// this.imageOptions.top = height / 2;
 	this.$el.appendChild(cvs);
   }
 
@@ -98,28 +97,27 @@ export default class Cropper extends EmitAble {
 	else {
 	  this.$eventManager = new MouseManager(this);
 	}
-
 	this.$eventManager.on('move', this.move);
 	this.$eventManager.on('scale', this.scale)
   }
 
   move = pos => {
-	this.imageOptions.left = pos.x;
-	this.imageOptions.top = pos.y;
-	// this.imageOptions.origin.x = pos.x;
-	// this.imageOptions.origin.y = pos.y;
-	// this.imageOptions.origin = null;
-	// this.$imageManager.setOrigin(pos);
-	this.$imageManager.drawImage();
+	let option = this.imageOptions;
+	option.origin.x = pos.x;
+	option.origin.y = pos.y;
+	console.log(pos);
+	// this.$imageManager.drawImage();
+	this.$imageManager.draw();
   };
 
   scale = payload => {
 	let {scale, x, y} = payload;
-	this.imageOptions.origin = {x, y};
+	// // this.imageOptions.origin = {x, y};
 	this.imageOptions.scale = scale;
-	// this.imageOptions.oldOrigin = {x, y};
-
-	this.$imageManager.drawImage();
+	//
+	// this.$imageManager.drawImage();
+	console.log(scale);
+	this.$imageManager.draw();
   };
 
 }
@@ -134,23 +132,54 @@ class ImageManager extends EmitAble {
   }
 
   async createImage() {
-	this.img = await createImage(this.$parent.$options.url);
+	this.img = await createImage(this.$parent.$options.url, {
+	  width: this.cvs.width * 10,
+	  height: this.cvs.height * 10,
+	});
 	// this.ctx.translate(this.cvs.width / 2, this.cvs.height / 2);
-	this.drawImage();
+	// this.drawImage();
+	this.draw();
   }
 
-  drawImage() {
+  drawBg() {
 	let {ctx, cvs} = this;
 	let {width: pWidth, height: pHeight} = cvs;
-	let {width, height, left, top, scale, origin} = this.$parent.imageOptions;
-
+	ctx.save();
 	ctx.clearRect(0, 0, pWidth, pHeight);
 	ctx.fillStyle = 'rgba(0,0,0,0.4)';
 	ctx.fillRect(0, 0, pWidth, pHeight);
+	ctx.restore();
+  }
+
+  drawImage() {
+	let {ctx} = this;
+	let {width, height, origin} = this.$parent.imageOptions;
+
+	this.drawBg();
 
 	ctx.save();
-	ctx.translate(left, top);
-	ctx.drawImage(this.img, 0, 0, width * scale, height * scale);
+	ctx.translate(origin.x, origin.y);
+	ctx.drawImage(this.img, 0, 0, width, height);
+	ctx.restore();
+  }
+
+  draw() {
+	this.drawBg();
+
+	let {ctx, cvs} = this;
+	let {width, height, origin, scale} = this.$parent.imageOptions;
+	let x = -origin.x; //Math.max(0, -origin.x);
+	let y = -origin.y; //Math.max(0, -origin.y);
+
+	let pScaleX = x / width * 2;
+	let pScaleY = y/ height * 2;
+
+	let left = (x + width / 2) - (width / scale) / 2;
+	let top = (y + height / 2) - (height / scale) / 2;
+
+	ctx.save();
+	// 图片,在原图中的位置,在原图中截取的尺寸,在canvas中的位置,在canvas中的大小
+	ctx.drawImage(this.img, x + left, y + top, width / scale, height / scale, 0, 0, width, height);
 	ctx.restore();
   }
 
@@ -166,6 +195,8 @@ class MouseManager extends EmitAble {
   scale = 1;
   endX = 0;
   endY = 0;
+  nowX = 0;
+  nowY = 0;
 
   constructor(parent) {
 	super();
@@ -209,6 +240,7 @@ class MouseManager extends EmitAble {
   };
 
   up = e => {
+	if (!this.isDown) return;
 	this.isDown = false;
 	this.endX = this.nowX;
 	this.endY = this.nowY;
