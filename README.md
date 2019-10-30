@@ -18,13 +18,6 @@
 |      el | `Element|string` | undefined | 截图组件挂载位置 |
 | options |           Object |        {} | 配置对象         |
 
-width: 600,
-height: 375,
-devicePixelRatio: window.devicePixelRatio,
-url: "",
-wheelSpeed: 0.05,
-cropMode: 'cover', // 截图模式,cover 表示不留白边,拖动时,也无法拖出
-
 ##### options
 
 |             字段 |    类型 |                  默认值 |                                      描述 |

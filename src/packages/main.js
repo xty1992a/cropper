@@ -4,6 +4,9 @@ const dftOptions = {
   devicePixelRatio: window.devicePixelRatio,
   url: "",
   wheelSpeed: 0.05,
+  maxRate: 10,
+  minRate: 0.5,
+  limitRect: null,
   cropMode: "cover" // 截图模式,cover表示不留白边,拖动时,也无法拖出
 };
 
@@ -25,7 +28,7 @@ export default class Cropper {
     }
     if (!el instanceof Element) throw new Error("el not exist!");
     this.$el = el;
-    this.$options = { ...dftOptions, ...opt };
+    this.$options = {...dftOptions, ...opt};
     this.position = {
       x: 0,
       y: 0,
@@ -45,7 +48,7 @@ export default class Cropper {
   }
 
   initCanvas() {
-    const { width, height, devicePixelRatio } = this.$options;
+    const {width, height, devicePixelRatio} = this.$options;
     const canvas = (this.$canvas = document.createElement("canvas"));
     const ctx = (this.ctx = canvas.getContext("2d"));
     canvas.width = width * devicePixelRatio;
@@ -62,33 +65,67 @@ export default class Cropper {
   async createModel(url) {
     const img = await ImageModel.loadImage(url);
     if (!img) return;
+    this.createLimiter();
     this.model = new ImageModel({
       ...this.computeModelOptions(img),
+      limiter: this.limiter,
       parent: this
     });
     this.model.putImage(img);
   }
 
-  computeModelOptions({ width, height }) {
-    const { width: WIDTH, height: HEIGHT } = this.$canvas;
+  createLimiter() {
+    const {
+      $options: {maxRate, limitRect, width, height, devicePixelRatio},
+    } = this;
+
+    if (limitRect) {
+      limitRect.x = limit(0, width)(limitRect.x);
+      limitRect.y = limit(0, height)(limitRect.y);
+      limitRect.width = limit(0, limitRect.width - limitRect.x)(limitRect.width);
+      limitRect.height = limit(0, limitRect.height - limitRect.y)(limitRect.width);
+    }
+
+    const options = {
+      x: 0, y: 0,
+      width,
+      height,
+      devicePixelRatio,
+      ...(limitRect || {})
+    };
+
+    options.maxWidth = maxRate * options.width;
+    options.maxHeight = maxRate * options.height;
+
+    this.limiter = new Limiter(options);
+  }
+
+  computeModelOptions({width, height}) {
+    const {width: WIDTH, height: HEIGHT} = this.$canvas;
     const imgRatio = width / height;
     const RATIO = WIDTH / HEIGHT;
-    if (RATIO === imgRatio) return { x: 0, y: 0, width: WIDTH, height: HEIGHT };
+    let result;
     console.log(RATIO, imgRatio);
-    if (RATIO < imgRatio) {
+    // 当图片比例与容器不一致时，按照合适的方式布局图片
+    if (RATIO === imgRatio) {
+      result = {x: 0, y: 0, width: WIDTH, height: HEIGHT};
+    } else if (RATIO < imgRatio) {
       console.log("宽超出");
-      return {
+      result = {
         width: HEIGHT * imgRatio,
         height: HEIGHT,
         x: (WIDTH - HEIGHT * imgRatio) / 2
       };
+    } else {
+      console.log("高超出");
+      result = {
+        width: WIDTH,
+        height: WIDTH / imgRatio,
+        y: (HEIGHT - WIDTH / imgRatio) / 2
+      };
     }
-    console.log("高超出");
-    return {
-      width: WIDTH,
-      height: WIDTH / imgRatio,
-      y: (HEIGHT - WIDTH / imgRatio) / 2
-    };
+    return result;
+
   }
 
   listenEvents() {
@@ -111,10 +148,10 @@ export default class Cropper {
 
   move = e => {
     if (!this.isDown) return;
-    const { clientX, clientY } = e.touches ? e.touches[0] : e;
+    const {clientX, clientY} = e.touches ? e.touches[0] : e;
     const {
-      position: { startX, startY, endX, endY },
-      $options: { devicePixelRatio: dpr }
+      position: {startX, startY, endX, endY},
+      $options: {devicePixelRatio: dpr}
     } = this;
     const deltaX = (clientX - startX) * dpr;
     const deltaY = (clientY - startY) * dpr;
@@ -136,7 +173,7 @@ export default class Cropper {
     clearTimeout(this.positionTimer);
     const value = e.wheelDelta || -e.deltaY || -e.detail;
     const delta = limit(-1, 1)(value);
-    const { clientX, clientY } = e;
+    const {clientX, clientY} = e;
     if (!this.wrapPosition) {
       const rect = this.$canvas.getBoundingClientRect();
       this.wrapPosition = {
@@ -147,7 +184,7 @@ export default class Cropper {
     const position = this.wrapPosition;
     const x = (clientX - position.x) * this.$options.devicePixelRatio;
     const y = (clientY - position.y) * this.$options.devicePixelRatio;
-    this.zoom({ x, y }, delta);
+    this.zoom({x, y}, delta);
     // 节流会导致重排的操作
     this.positionTimer = setTimeout(() => {
       this.wrapPosition = null;
@@ -157,21 +194,19 @@ export default class Cropper {
   zoom(position, delta) {
     const limitFn = limit(1, 10);
 
-    const step =
-      delta < 0 ? this.$options.wheelSpeed : -this.$options.wheelSpeed;
-
+    const step = this.$options.wheelSpeed * -delta;
     const scale = +limitFn(this.model.scale + step).toFixed(2);
     // console.log("[mouse zoom on] ", position, scale, delta);
     this.model.zoom(position, scale);
-    console.log(scale, this.model.width, this.model.height, this.model);
+    console.log("scale [%s], width [%s], height [%s], x [%s], y [%s]", scale, this.model.width, this.model.height, this.model.x, this.model.y);
     this.render();
   }
 
   render() {
-    const { x, y, width, height, img } = this.model;
+    const {x, y, width, height, img} = this.model;
     if (!img) return;
-    const { ctx } = this;
-    const { width: WIDTH, height: HEIGHT } = this.$canvas;
+    const {ctx} = this;
+    const {width: WIDTH, height: HEIGHT} = this.$canvas;
     ctx.clearRect(0, 0, WIDTH, HEIGHT);
     ctx.drawImage(img, x, y, width, height);
   }
@@ -191,8 +226,9 @@ const imgOptions = {
 // 为了保持原点位置不变，会同步修改它在外部环境中的坐标，即其x,y属性
 class ImageModel {
   constructor(props = {}) {
-    const options = { ...imgOptions, ...props };
-    this.initialOptions = { ...options };
+    const options = {...imgOptions, ...props};
+    this.initialOptions = {...options};
+    this.limiter = options.limiter;
     this.x = options.x;
     this.y = options.y;
     this.scale = options.scale;
@@ -214,39 +250,40 @@ class ImageModel {
   }
 
   limitPosition = position => {
-    const {
-      $canvas: { width, height }
-    } = this.initialOptions.parent;
-    this.x = limit(width - this.width, 0)(position.x);
-    this.y = limit(height - this.height, 0)(position.y);
+    return this.limiter.limitPosition({...position, width: this.width, height: this.height});
+    /*  const {
+        $canvas: {width, height}
+      } = this.initialOptions.parent;
+      return {
+        x: limit(width - this.width, 0)(position.x),
+        y: limit(height - this.height, 0)(position.y)
+      };*/
   };
 
   limitSize = size => {
-    const { width, height } = this.initialOptions;
+    return this.limiter.limitSize(size);
+    /*const {width, height} = this.limiter;
     return {
       width: limit(width, width * 10)(size.width),
       height: limit(height, height * 10)(size.height)
-    };
+    };*/
   };
 
   // 移动到指定位置
   move(position) {
-    // this.x = position.x;
-    // this.y = position.y;
-    this.limitPosition({
-      x: position.x,
-      y: position.y
-    });
+    position = this.limitPosition(position);
+    this.x = position.x;
+    this.y = position.y;
   }
 
   // 以一个坐标为中心点，缩放至指定倍数
-  zoom({ x, y }, scale) {
+  zoom({x, y}, scale) {
     this.scale = scale;
     // region 计算新坐标
     // 计算缩放之后的新尺寸
-    const { width, height } = this.initialOptions;
+    const {width, height} = this.initialOptions;
 
-    const { width: newWidth, height: newHeight } = this.limitSize({
+    const {width: newWidth, height: newHeight} = this.limitSize({
       width: width * this.scale,
       height: height * this.scale
     });
@@ -264,12 +301,12 @@ class ImageModel {
     // endregion
     this.width = newWidth;
     this.height = newHeight;
-    this.limitPosition({
+    const position = this.limitPosition({
       x: this.x + deltaX,
       y: this.y + deltaY
     });
-    // this.x = this.x + deltaX;
-    // this.y = this.y + deltaY;
+    this.x = position.x;
+    this.y = position.y;
   }
 
   putImage(img) {
@@ -279,9 +316,39 @@ class ImageModel {
 
 // 限制器，用于限制model的坐标，尺寸
 class Limiter {
-  constructor(props) {}
+  constructor(props) {
+    this.maxWidth = props.maxWidth * props.devicePixelRatio;
+    this.maxHeight = props.maxHeight * props.devicePixelRatio;
+    this.x = props.x * props.devicePixelRatio;
+    this.y = props.y * props.devicePixelRatio;
+    this.width = props.width * props.devicePixelRatio;
+    this.height = props.height * props.devicePixelRatio;
 
-  limitPosition(position) {}
+    console.log(props);
+  }
 
-  limitSize(size) {}
+  limitPosition(rect) {
+    const {width, height, x, y} = this;
+
+    return {
+      x: limit(width - rect.width + x, x)(rect.x),
+      y: limit(y - height, y)(rect.y)
+    };
+  }
+
+  limitSize(size) {
+    const ratio = (size.width / size.height).toFixed(4);
+    const {width, height, maxHeight, maxWidth} = this;
+    let w = limit(width, maxWidth)(size.width);
+    let h = limit(height, maxHeight)(size.height);
+    if (ratio !== (w / h).toFixed(4)) {
+      w = h * ratio;
+    }
+    return {
+      width: w,
+      height: h
+    };
+  }
 }
+
+const order = ([min, max]) => min > max ? [max, min] : [min, max];

@@ -7,18 +7,24 @@ const elList = [
   {
     width: 600,
     height: 375,
-    url: "static/1.jpg"
+    url: "static/1.jpg",
+    limitRect: {
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 275
+    }
   },
-  {
-    width: 600,
-    height: 800,
-    url: "static/1.jpg"
-  },
-  {
-    width: 600,
-    height: 300,
-    url: "static/1.jpg"
-  },
+  /*  {
+      width: 600,
+      height: 800,
+      url: "static/1.jpg"
+    },
+    {
+      width: 600,
+      height: 300,
+      url: "static/1.jpg",
+    },*/
 ];
 
 function main() {
