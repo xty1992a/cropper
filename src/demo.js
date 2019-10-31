@@ -29,6 +29,7 @@ const elList = [
   {
     width: 300,
     height: 375,
+    // devicePixelRatio: 1,
     url: "static/geralt_of_rivia.jpg",
     cropMode: "cover"
   },
@@ -53,7 +54,8 @@ function main() {
     el.style.cssText = "margin-bottom: 10px;";
     el.innerHTML = `<h3 style="margin: 0;padding: 10px;">截图模式: ${opt.cropMode}</h3>`;
     frag.appendChild(el);
-    new Cropper(el, opt);
+    const crop = new Cropper(el, opt);
+    console.log(crop, opt.cropMode);
   });
 
   document.body.appendChild(frag);

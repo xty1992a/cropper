@@ -1,12 +1,11 @@
 import {
-  renderBg,
-  limit,
-  order,
-  isHit,
-  listenWheel,
-  isMobile,
   debounce,
-  EmitAble
+  EmitAble,
+  isHit,
+  limit,
+  listen,
+  listenWheel,
+  renderBg
 } from "./utils";
 
 const dftOptions = {
@@ -61,13 +60,14 @@ export default class Cropper {
     this.init();
   }
 
-  async init() {
+  init() {
     this.initCanvas();
     this.listenEvents();
-    await this.createModel(this.$options.url);
-    this.createLimiter();
-    this.model.limiter = this.limiter;
-    this.render();
+    this.createModel(this.$options.url, () => {
+      this.createLimiter();
+      this.model.limiter = this.limiter;
+      this.render();
+    });
   }
 
   initCanvas() {
@@ -86,14 +86,16 @@ export default class Cropper {
     renderBg(canvas);
   }
 
-  async createModel(url) {
-    const img = await ImageModel.loadImage(url);
-    if (!img) throw new Error("image load failed! url %s is invalid!", url);
-    this.model = new ImageModel({
-      ...this.computeModelOptions(img),
-      parent: this
+  createModel(url, cb) {
+    ImageModel.loadImage(url, img => {
+      if (!img) throw new Error("image load failed! url %s is invalid!", url);
+      this.model = new ImageModel({
+        ...this.computeModelOptions(img),
+        parent: this
+      });
+      this.model.putImage(img);
+      cb && cb();
     });
-    this.model.putImage(img);
   }
 
   fmtWindow() {
@@ -113,8 +115,8 @@ export default class Cropper {
       window = {
         x: 0,
         y: 0,
-        width: WIDTH,
-        height: HEIGHT
+        width,
+        height
       };
     }
 
@@ -136,34 +138,39 @@ export default class Cropper {
 	* free-window即在contain的基础上,添加了一个window.
  */
   createLimiter() {
-    const { MODE, WIDTH, HEIGHT } = this;
+    const {
+      MODE,
+      $options: { width, height }
+    } = this;
     const windowOptions = this.fmtWindow();
     windowOptions.moveable = ["window", "free-window"].includes(MODE);
     const limiterOptions = { ...windowOptions };
     switch (MODE) {
       case "cover":
         windowOptions.x = windowOptions.y = limiterOptions.x = limiterOptions.y = 0;
-        windowOptions.width = limiterOptions.width = WIDTH;
-        windowOptions.height = limiterOptions.height = HEIGHT;
+        windowOptions.width = limiterOptions.width = width;
+        windowOptions.height = limiterOptions.height = height;
         break;
       case "contain":
         windowOptions.x = windowOptions.y = 0;
-        windowOptions.width = WIDTH;
-        windowOptions.height = HEIGHT;
+        windowOptions.width = width;
+        windowOptions.height = height;
         limiterOptions.free = true;
         break;
       case "window":
         break;
       case "free-window":
         limiterOptions.x = limiterOptions.y = 0;
-        limiterOptions.width = WIDTH;
-        limiterOptions.height = HEIGHT;
+        limiterOptions.width = width;
+        limiterOptions.height = height;
         limiterOptions.free = true;
         windowOptions.free = true;
         break;
     }
+    console.log(limiterOptions);
     this.limiter = new Limiter(limiterOptions);
     this.window = new Limiter(windowOptions);
+    console.log(MODE, this.limiter);
     if (MODE === "contain") {
       this.model.on("change", model => {
         this.limiter.x = model.x;
@@ -228,10 +235,10 @@ export default class Cropper {
   listenEvents() {
     const el = this.$canvas;
     listenWheel(el, this.mouseWheel);
-    el.addEventListener("mousedown", this.down);
-    el.addEventListener("mousemove", this.move);
-    el.addEventListener("mouseup", this.up);
-    el.addEventListener("mouseleave", this.up);
+    listen(el, "mousedown", this.down);
+    listen(el, "mousemove", this.move);
+    listen(el, "mouseup", this.up);
+    listen(el, "mouseleave", this.up);
   }
 
   // region DOM事件
@@ -241,6 +248,7 @@ export default class Cropper {
     const point = e.touches ? e.touches[0] : e;
 
     const { x, y } = this.getEventPoint(point);
+    console.log(x, y, this.window.rect);
     this.isHitWindow = isHit({ x, y }, this.window.rect);
     this.position.startX = point.clientX;
     this.position.startY = point.clientY;
@@ -335,6 +343,7 @@ export default class Cropper {
     this.render();
   }
 
+  // region 绘制
   render() {
     // requestAnimationFrame可以将回调放到浏览器渲染帧(相对空闲)时调用
     requestAnimationFrame(() => {
@@ -410,6 +419,8 @@ export default class Cropper {
     ctx.fillRect(x, y, width, height);
     ctx.restore();
   }
+
+  // endregion
 }
 
 const imgOptions = {
@@ -437,13 +448,11 @@ class ImageModel extends EmitAble {
     this.height = options.height;
   }
 
-  static loadImage(url) {
-    return new Promise(resolve => {
-      const img = new Image();
-      img.addEventListener("load", () => resolve(img));
-      img.addEventListener("error", () => resolve(null));
-      img.src = url;
-    });
+  static loadImage(url, cb) {
+    const img = new Image();
+    listen(img, "load", () => cb(img));
+    listen(img, "error", () => cb(null));
+    img.src = url;
   }
 
   // 移动到指定位置
@@ -470,6 +479,7 @@ class ImageModel extends EmitAble {
       width: width * scale,
       height: height * scale
     });
+    console.log(newWidth, width * scale, width);
 
     // 将外部坐标转换为内部坐标
     const origin = { x: x - this.x, y: y - this.y };
@@ -522,6 +532,7 @@ class Limiter extends EmitAble {
     this.y = props.y * props.devicePixelRatio;
     this.width = props.width * props.devicePixelRatio;
     this.height = props.height * props.devicePixelRatio;
+    console.log(props.width, props.devicePixelRatio);
   }
 
   // 动态BoundingRect
@@ -566,6 +577,8 @@ class Limiter extends EmitAble {
     const { width, height, maxHeight, maxWidth, FREE } = this;
     let w = limit(width, maxWidth)(size.width);
     let h = limit(height, maxHeight)(size.height);
+
+    console.log(size.width, w, width, height, maxWidth);
     // 进入受限范围,按比例重新计算尺寸
     if (ratio !== (w / h).toFixed(4)) {
       w = h * ratio;
