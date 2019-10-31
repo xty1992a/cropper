@@ -20,19 +20,24 @@
 
 ##### options
 
-|             字段 |    类型 |                  默认值 |                                      描述 |
-| ---------------: | ------: | ----------------------: | ----------------------------------------: |
-|            width |  number |                     600 |                                  组件宽度 |
-|           height |  number |                     375 |                                  组件高度 |
-| devicePixelRatio |  number | window.devicePixelRatio |                                       dpr |
-|              url |  string |                      "" |                        需要截取的图片地址 |
-|         cropMode |  string |                 'cover' |                          截图模式[未实现] |
-|          maxSize |  number |                      10 |                      最大放大倍数[未实现] |
-|          minSize |  number |                       1 |                      最小放大倍数[未实现] |
-|       resizeable | boolean |                   false | 是否允许拖动组件边缘,改变组件尺寸[未实现] |
+|             字段 |    类型 |                  默认值 |                           描述 |
+| ---------------: | ------: | ----------------------: | -----------------------------: |
+|              url |  string |                      "" |             需要截取的图片地址 |
+|            width |  number |                     600 |                       容器宽度 |
+|           height |  number |                     375 |                       容器高度 |
+|           window |  object |                    null |                  截图框的 rect |
+|       wheelSpeed |  number |                    0.05 |                       缩放步长 |
+|          maxRate |  number |                      10 |                   最大放大倍数 |
+|          minRate |  number |                       1 |                   最小放大倍数 |
+|         cropMode |  string |                 'cover' |                       截图模式 |
+|        maskColor |  string |       'rgba(0,0,0,0.6)' |                       蒙层颜色 |
+| devicePixelRatio |  number | window.devicePixelRatio |                            dpr |
+|  windowResizable | boolean |                    true | 是否允许改变截图框尺寸[未实现] |
+|   windowMoveable | boolean |                    true |     是否允许移动截图框[未实现] |
 
 ##### cropMode 详解
 
-> cover 模式表示图片铺满组件,拖拽时,被限制在组件内部.缩放也无法缩小至小于组件**不会拖出空白**
-
-> free 模式表示图片拖拽不受限制,只受缩放限制**会拖出空白**
+- cover, 容器即截图框,图片只能在容器内部移动,最小只能缩小到容器的最长边.
+- contain, 容器即截图框,图片移动,缩放不限制
+- window, 显示截图框,截图框的移动限制在图片内(图片的缩放移动也受截图框的限制)
+- free-window,显示截图框,截图框的移动不受限制

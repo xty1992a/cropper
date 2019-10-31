@@ -319,7 +319,7 @@ export default class Cropper {
 
   // 以一个坐标为中心,缩放图像
   zoom(point, delta) {
-    const limitFn = limit(0.5, 10);
+    const limitFn = limit(this.$options.minRate, this.$options.maxRate);
     const step = this.$options.wheelSpeed * -delta;
     const scale = +limitFn(this.model.scale + step).toFixed(2);
     // console.log("[mouse zoom on] ", position, scale, delta);

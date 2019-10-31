@@ -19,6 +19,7 @@ const elList = [
     width: 300,
     height: 375,
     url: "static/field.jpg",
+    minRate: 0.1,
     cropMode: "free-window",
     window: {
       width: 200,
