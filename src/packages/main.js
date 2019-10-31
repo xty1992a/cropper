@@ -1,16 +1,45 @@
-import { renderBg, limit, order, isHit, listenWheel, isMobile } from "./utils";
+import {
+  renderBg,
+  limit,
+  order,
+  isHit,
+  listenWheel,
+  isMobile,
+  debounce,
+  EmitAble
+} from "./utils";
 
 const dftOptions = {
-  width: 600,
-  height: 375,
-  devicePixelRatio: window.devicePixelRatio || 1,
-  url: "",
-  wheelSpeed: 0.05,
-  maxRate: 10,
-  minRate: 0.5,
-  limitRect: null,
-  cropMode: "cover" // 截图模式,cover表示不留白边,拖动时,也无法拖出
+  url: "", // 截图链接
+  width: 600, // 容器尺寸
+  height: 375, // 容器尺寸
+  window: null, // 截图框的rect对象截图框被限制在容器内设置超出部分无效
+  wheelSpeed: 0.05, // 放大步长
+  maxRate: 10, // 图片最大放大倍数
+  minRate: 0.5, // 图片最小缩小倍数
+  cropMode: "cover", //  截图模式,cover表示不留白边拖动时也无法拖出
+  maskColor: "rgba(0,0,0,0.6)", // 蒙层颜色
+  devicePixelRatio: window.devicePixelRatio || 1 // dpr
 };
+
+/*
+ * cropMode将有以下类型
+ * cover, 容器即截图框,图片只能在容器内部移动,图片最小只能缩小到容器的最长边.
+ * contain, 容器即截图框,图片移动,缩放不限制
+ * window, 显示截图框,截图框的移动限制在图片内(图片的缩放移动也受截图框的限制)
+ * free-window,显示截图框,截图框的移动不受限制
+ * */
+/*
+ * 具体实现
+ * 首先明确几个角色 ---- window是截图框,limiter是限制器
+ * window可在容器内移动,缩放,在特定模式下,它将与限制器保持同步.
+ * limiter用于限制图片的缩放移动,图片在任何情况下,都无法超过限制器.它的值允许更改
+ * 模式分析
+ * cover模式实际上就是设置了一个尺寸与容器一致的限制器,window;window不可移动
+ * -----contain模式是一个始终跟随图片的限制器,它的尺寸始终比图片大一倍,window尺寸与容器一致,不可移动
+ * window是一个限制器与截图框保持同步联动的策略.移动,缩放window,将同步修改limiter.
+ * free-window即在contain的基础上,添加了一个window.
+ * */
 
 export default class Cropper {
   constructor(el, opt = {}) {
@@ -20,6 +49,7 @@ export default class Cropper {
     if (!el instanceof Element) throw new Error("el not exist!");
     this.$el = el;
     this.$options = { ...dftOptions, ...opt };
+    this.MODE = this.$options.cropMode;
     this.position = {
       x: 0,
       y: 0,
@@ -34,8 +64,9 @@ export default class Cropper {
   async init() {
     this.initCanvas();
     this.listenEvents();
-    this.createLimiter();
     await this.createModel(this.$options.url);
+    this.createLimiter();
+    this.model.limiter = this.limiter;
     this.render();
   }
 
@@ -45,7 +76,6 @@ export default class Cropper {
     const ctx = (this.ctx = canvas.getContext("2d"));
     this.WIDTH = canvas.width = width * devicePixelRatio;
     this.HEIGHT = canvas.height = height * devicePixelRatio;
-    console.log(this.WIDTH, this.HEIGHT);
     canvas.style.width = width + "px";
     canvas.style.height = height + "px";
     ctx.mozImageSmoothingEnabled = true;
@@ -61,62 +91,136 @@ export default class Cropper {
     if (!img) throw new Error("image load failed! url %s is invalid!", url);
     this.model = new ImageModel({
       ...this.computeModelOptions(img),
-      limiter: this.limiter,
       parent: this
     });
     this.model.putImage(img);
   }
 
-  createLimiter() {
+  fmtWindow() {
     const {
-      $options: { maxRate, limitRect, width, height, devicePixelRatio }
+      WIDTH,
+      HEIGHT,
+      MODE,
+      $options: { maxRate, width, height, devicePixelRatio }
     } = this;
-
-    if (limitRect) {
-      limitRect.x = limit(0, width)(limitRect.x);
-      limitRect.y = limit(0, height)(limitRect.y);
-      limitRect.width = limit(0, width - limitRect.x)(limitRect.width);
-      limitRect.height = limit(0, height - limitRect.y)(limitRect.height);
+    let window = this.$options.window;
+    if (window) {
+      window.x = limit(0, width)(window.x || 0);
+      window.y = limit(0, height)(window.y || 0);
+      window.width = limit(0, width - window.x)(window.width);
+      window.height = limit(0, height - window.y)(window.height);
+    } else {
+      window = {
+        x: 0,
+        y: 0,
+        width: WIDTH,
+        height: HEIGHT
+      };
     }
 
-    const options = {
-      x: 0,
-      y: 0,
-      width,
-      height,
-      devicePixelRatio,
-      ...(limitRect || {})
+    window.maxWidth = maxRate * window.width;
+    window.maxHeight = maxRate * window.height;
+
+    return {
+      ...window,
+      WIDTH,
+      HEIGHT,
+      devicePixelRatio
     };
+  }
 
-    options.maxWidth = maxRate * options.width;
-    options.maxHeight = maxRate * options.height;
-
-    this.limiter = new Limiter(options);
+  /*
+    * cover模式实际上就是设置了一个尺寸与容器一致的限制器,window;window不可移动
+	------* contain模式是一个始终跟随图片的限制器,它的尺寸始终比图片大一倍,window尺寸与容器一致,不可移动
+	* window是一个限制器与截图框保持同步联动的策略.移动,缩放window,将同步修改limiter.
+	* free-window即在contain的基础上,添加了一个window.
+ */
+  createLimiter() {
+    const { MODE, WIDTH, HEIGHT } = this;
+    const windowOptions = this.fmtWindow();
+    windowOptions.moveable = ["window", "free-window"].includes(MODE);
+    const limiterOptions = { ...windowOptions };
+    switch (MODE) {
+      case "cover":
+        windowOptions.x = windowOptions.y = limiterOptions.x = limiterOptions.y = 0;
+        windowOptions.width = limiterOptions.width = WIDTH;
+        windowOptions.height = limiterOptions.height = HEIGHT;
+        break;
+      case "contain":
+        windowOptions.x = windowOptions.y = 0;
+        windowOptions.width = WIDTH;
+        windowOptions.height = HEIGHT;
+        limiterOptions.free = true;
+        break;
+      case "window":
+        break;
+      case "free-window":
+        limiterOptions.x = limiterOptions.y = 0;
+        limiterOptions.width = WIDTH;
+        limiterOptions.height = HEIGHT;
+        limiterOptions.free = true;
+        windowOptions.free = true;
+        break;
+    }
+    this.limiter = new Limiter(limiterOptions);
+    this.window = new Limiter(windowOptions);
+    if (MODE === "contain") {
+      this.model.on("change", model => {
+        this.limiter.x = model.x;
+        this.limiter.y = model.y;
+        this.limiter.width = model.width;
+        this.limiter.height = model.height;
+      });
+    }
+    // window模式,限制框与截图框同步
+    if (MODE === "window") {
+      this.window.on(
+        "change",
+        debounce(changes => {
+          console.log("sync limiter with window");
+          Object.keys(changes).forEach(
+            key => (this.limiter[key] = changes[key])
+          );
+        })
+      );
+    }
+    //
   }
 
   // 计算图片初始位置
   computeModelOptions({ width, height }) {
-    const { WIDTH, HEIGHT } = this;
-    const imgRatio = width / height;
-    const RATIO = WIDTH / HEIGHT;
-    let result;
+    const { WIDTH, HEIGHT, MODE } = this;
+    // js计算有误差,简单取整
+    const imgRatio = (width / height).toFixed(4);
+    const RATIO = (WIDTH / HEIGHT).toFixed(4);
+    // 占满容器
+    let result = { x: 0, y: 0, width: WIDTH, height: HEIGHT };
+
+    // 高度与容器相等
+    const fill_height = {
+      width: HEIGHT * imgRatio,
+      height: HEIGHT,
+      x: (WIDTH - HEIGHT * imgRatio) / 2
+    };
+
+    // 宽度与容器相等
+    const fill_width = {
+      width: WIDTH,
+      height: WIDTH / imgRatio,
+      y: (HEIGHT - WIDTH / imgRatio) / 2
+    };
+
     // 当图片比例与容器不一致时，按照合适的方式布局图片
-    if (RATIO === imgRatio) {
-      result = { x: 0, y: 0, width: WIDTH, height: HEIGHT };
-    } else if (RATIO < imgRatio) {
-      console.log("宽超出");
-      result = {
-        width: HEIGHT * imgRatio,
-        height: HEIGHT,
-        x: (WIDTH - HEIGHT * imgRatio) / 2
-      };
-    } else {
-      console.log("高超出");
-      result = {
-        width: WIDTH,
-        height: WIDTH / imgRatio,
-        y: (HEIGHT - WIDTH / imgRatio) / 2
-      };
+    if (RATIO !== imgRatio) {
+      if (RATIO < imgRatio) {
+        result = fill_height;
+      } else {
+        result = fill_width;
+      }
+    }
+
+    if (["contain"].includes(MODE)) {
+      result = result === fill_height ? fill_width : fill_height;
     }
     return result;
   }
@@ -132,24 +236,27 @@ export default class Cropper {
 
   // region DOM事件
   down = e => {
+    if (!this.model) return;
     this.isDown = true;
     const point = e.touches ? e.touches[0] : e;
 
     const { x, y } = this.getEventPoint(point);
-    this.isHitLimiter = isHit({ x, y }, this.limiter.rect);
+    this.isHitWindow = isHit({ x, y }, this.window.rect);
     this.position.startX = point.clientX;
     this.position.startY = point.clientY;
 
     let model = this.model;
 
-    if (this.isHitLimiter) {
-      model = this.limiter;
+    if (this.isHitWindow && this.window.moveable) {
+      model = this.window;
     }
+    console.log(this.isHitWindow, "is hit window", model);
     this.position.endX = model.x;
     this.position.endY = model.y;
   };
 
   move = e => {
+    if (!this.model) return;
     if (!this.isDown) return;
     const { clientX, clientY } = e.touches ? e.touches[0] : e;
     const {
@@ -161,18 +268,23 @@ export default class Cropper {
 
     let model = this.model;
 
-    if (this.isHitLimiter) {
-      model = this.limiter;
+    if (this.isHitWindow && this.window.moveable) {
+      model = this.window;
     }
 
     model.move({
       x: endX + deltaX,
-      y: endY + deltaY
+      y: endY + deltaY,
+      width: this.model.width,
+      height: this.model.height,
+      modelX: this.model.x,
+      modelY: this.model.y
     });
     this.render();
   };
 
   up = () => {
+    if (!this.model) return;
     if (!this.isDown) return;
     this.isDown = false;
   };
@@ -263,12 +375,13 @@ export default class Cropper {
   renderLimiter() {
     const {
       ctx,
-      limiter: { x, y, height, width },
       WIDTH,
-      HEIGHT
+      HEIGHT,
+      $options: { maskColor },
+      limiter: { x, y, height, width }
     } = this;
     ctx.save();
-    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.fillStyle = maskColor;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
     ctx.rect(x, y, width, height);
@@ -282,12 +395,15 @@ export default class Cropper {
   renderWindow() {
     const {
       ctx,
-      limiter: { x, y, height, width },
       WIDTH,
-      HEIGHT
+      HEIGHT,
+      $options: { maskColor },
+      window: { x, y, height, width }
     } = this;
+
+    // console.log(' window : %s %s \n limiter: %s %s', this.window.x, this.window.y, this.limiter.x, this.limiter.y);
     ctx.save();
-    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.fillStyle = maskColor;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
     ctx.globalCompositeOperation = "destination-out";
     ctx.fillStyle = "#000";
@@ -308,18 +424,15 @@ const imgOptions = {
 // 该类的x,y,width,height描述了它在外部环境中的位置，尺寸信息
 // 它提供了一个zoom方法，可以以指定的位置（该位置必须在它的内部）为原点，对其尺寸进行缩放。
 // 为了保持原点位置不变，会同步修改它在外部环境中的坐标，即其x,y属性
-class ImageModel {
+class ImageModel extends EmitAble {
   constructor(props = {}) {
+    super();
     const options = { ...imgOptions, ...props };
     this.initialOptions = { ...options };
     this.limiter = options.limiter;
     this.x = options.x;
     this.y = options.y;
     this.scale = options.scale;
-    this.origin = {
-      x: options.x,
-      y: options.y
-    };
     this.width = options.width;
     this.height = options.height;
   }
@@ -335,13 +448,15 @@ class ImageModel {
 
   // 移动到指定位置
   move(position) {
-    position = this.limiter.limitPosition({
-      ...position,
+    position = this.limiter.limitPosition(position);
+    this.x = position.x;
+    this.y = position.y;
+    this.fire("change", {
+      x: this.x,
+      y: this.y,
       width: this.width,
       height: this.height
     });
-    this.x = position.x;
-    this.y = position.y;
   }
 
   // 以一个坐标为中心点，缩放至指定倍数
@@ -376,11 +491,16 @@ class ImageModel {
 
     // 尺寸被限制之后,与入参scale脱钩,这里重新计算scale
     this.scale = newHeight / height;
-    this.origin = origin;
     this.width = newWidth;
     this.height = newHeight;
     this.x = position.x;
     this.y = position.y;
+    this.fire("change", {
+      x: this.x,
+      y: this.y,
+      width: this.width,
+      height: this.height
+    });
   }
 
   putImage(img) {
@@ -389,8 +509,13 @@ class ImageModel {
 }
 
 // 限制器，用于限制model的坐标，尺寸
-class Limiter {
+class Limiter extends EmitAble {
   constructor(props) {
+    super();
+    this.FREE = Boolean(props.free);
+    this.moveable = props.moveable;
+    this.WIDTH = props.WIDTH;
+    this.HEIGHT = props.HEIGHT;
     this.maxWidth = props.maxWidth * props.devicePixelRatio;
     this.maxHeight = props.maxHeight * props.devicePixelRatio;
     this.x = props.x * props.devicePixelRatio;
@@ -410,22 +535,35 @@ class Limiter {
     };
   }
 
-  move({ x, y }) {
-    this.x = x;
-    this.y = y;
+  // width和height是model的尺寸
+  move({ x, y, width, height, modelX, modelY }) {
+    const { WIDTH, HEIGHT, FREE, moveable } = this;
+    if (!moveable) return;
+    const minX = FREE ? 0 : Math.max(0, modelX);
+    const minY = FREE ? 0 : Math.max(0, modelY);
+    const maxX = FREE
+      ? WIDTH - this.width
+      : Math.min(WIDTH - this.width, width + modelX - this.width);
+    const maxY = FREE
+      ? HEIGHT - this.height
+      : Math.min(HEIGHT - this.height, height + modelY - this.height);
+    this.x = limit(minX, maxX)(x);
+    this.y = limit(minY, maxY)(y);
+
+    this.fire("change", { x: this.x, y: this.y });
   }
 
   limitPosition(rect) {
-    const { width, height, x, y } = this;
+    const { width, height, x, y, FREE } = this;
     return {
-      x: limit(width - rect.width + x, x)(rect.x),
-      y: limit(y - rect.height + height, y)(rect.y)
+      x: FREE ? rect.x : limit(width - rect.width + x, x)(rect.x),
+      y: FREE ? rect.y : limit(y - rect.height + height, y)(rect.y)
     };
   }
 
   limitSize(size) {
     const ratio = (size.width / size.height).toFixed(4);
-    const { width, height, maxHeight, maxWidth } = this;
+    const { width, height, maxHeight, maxWidth, FREE } = this;
     let w = limit(width, maxWidth)(size.width);
     let h = limit(height, maxHeight)(size.height);
     // 进入受限范围,按比例重新计算尺寸
@@ -433,8 +571,8 @@ class Limiter {
       w = h * ratio;
     }
     return {
-      width: w,
-      height: h
+      width: FREE ? size.width : w,
+      height: FREE ? size.height : h
     };
   }
 }

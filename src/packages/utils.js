@@ -1,3 +1,6 @@
+window.requestAnimationFrame =
+  window.requestAnimationFrame || (fn => setTimeout(fn, 16));
+
 export const isMobile = (() => {
   var userAgentInfo = navigator.userAgent;
   var Agents = [
@@ -37,5 +40,28 @@ export const renderBg = el => {
   el.style.cssText = `background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAQMAAAAlPW0iAAAAA3NCSVQICAjb4U/gAAAABlBMVEXMzMz////TjRV2AAAACXBIWXMAAArrAAAK6wGCiw1aAAAAHHRFWHRTb2Z0d2FyZQBBZG9iZSBGaXJld29ya3MgQ1M26LyyjAAAABFJREFUCJlj+M/AgBVhF/0PAH6/D/HkDxOGAAAAAElFTkSuQmCC");`;
 };
 
-window.requestAnimationFrame =
-  window.requestAnimationFrame || (fn => setTimeout(fn, 16));
+export const debounce = (fn, time = 100) => {
+  let timer = null;
+  return function() {
+    const context = this;
+    let args = arguments;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      fn.apply(context, args);
+    }, time);
+  };
+};
+
+export class EmitAble {
+  constructor() {
+    this._task = {};
+  }
+
+  on(event, callback) {
+    this._task[event] = callback;
+  }
+
+  fire(event, payload) {
+    this._task[event] && this._task[event](payload);
+  }
+}

@@ -4,32 +4,53 @@ import Cropper from "./packages/main";
 
 const elList = [
   {
-    width: 600,
+    width: 300,
     height: 375,
     url: "static/field.jpg",
-    limitRect: {
+    cropMode: "window",
+    window: {
       x: 100,
       y: 100,
       width: 200,
       height: 275
     }
+  },
+  {
+    width: 300,
+    height: 375,
+    url: "static/field.jpg",
+    cropMode: "free-window",
+    window: {
+      width: 200,
+      height: 275
+    }
+  },
+  {
+    width: 300,
+    height: 375,
+    url: "static/geralt_of_rivia.jpg",
+    cropMode: "cover"
+  },
+  {
+    width: 600,
+    height: 190,
+    url: "static/geralt_of_rivia.jpg",
+    cropMode: "contain"
+  },
+  {
+    width: 300,
+    height: 375,
+    url: "static/geralt_of_rivia.jpg",
+    cropMode: "contain"
   }
-  /*  {
-      width: 600,
-      height: 800,
-      url: "static/geralt_of_rivia.jpg"
-    },
-    {
-      width: 600,
-      height: 300,
-      url: "static/geralt_of_rivia.jpg",
-    },*/
 ];
 
 function main() {
   const frag = document.createDocumentFragment();
   elList.forEach(opt => {
     const el = document.createElement("div");
+    el.style.cssText = "margin-bottom: 10px;";
+    el.innerHTML = `<h3 style="margin: 0;padding: 10px;">截图模式: ${opt.cropMode}</h3>`;
     frag.appendChild(el);
     new Cropper(el, opt);
   });
