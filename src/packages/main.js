@@ -1,24 +1,15 @@
+import { renderBg, limit, order, isHit, listenWheel, isMobile } from "./utils";
+
 const dftOptions = {
   width: 600,
   height: 375,
-  devicePixelRatio: window.devicePixelRatio,
+  devicePixelRatio: window.devicePixelRatio || 1,
   url: "",
   wheelSpeed: 0.05,
   maxRate: 10,
   minRate: 0.5,
   limitRect: null,
   cropMode: "cover" // 截图模式,cover表示不留白边,拖动时,也无法拖出
-};
-
-const limit = (min, max) => val => Math.min(Math.max(val, min), max);
-const listenWheel = (el, callback) => {
-  if (document.addEventListener) {
-    el.addEventListener("mousewheel", callback);
-    el.addEventListener("wheel", callback);
-    el.addEventListener("DOMMouseScroll", callback);
-  } else {
-    el.attachEvent("onmousewheel", callback); //IE 6/7/8
-  }
 };
 
 export default class Cropper {
@@ -28,7 +19,7 @@ export default class Cropper {
     }
     if (!el instanceof Element) throw new Error("el not exist!");
     this.$el = el;
-    this.$options = {...dftOptions, ...opt};
+    this.$options = { ...dftOptions, ...opt };
     this.position = {
       x: 0,
       y: 0,
@@ -43,16 +34,18 @@ export default class Cropper {
   async init() {
     this.initCanvas();
     this.listenEvents();
+    this.createLimiter();
     await this.createModel(this.$options.url);
     this.render();
   }
 
   initCanvas() {
-    const {width, height, devicePixelRatio} = this.$options;
+    const { width, height, devicePixelRatio } = this.$options;
     const canvas = (this.$canvas = document.createElement("canvas"));
     const ctx = (this.ctx = canvas.getContext("2d"));
-    canvas.width = width * devicePixelRatio;
-    canvas.height = height * devicePixelRatio;
+    this.WIDTH = canvas.width = width * devicePixelRatio;
+    this.HEIGHT = canvas.height = height * devicePixelRatio;
+    console.log(this.WIDTH, this.HEIGHT);
     canvas.style.width = width + "px";
     canvas.style.height = height + "px";
     ctx.mozImageSmoothingEnabled = true;
@@ -60,12 +53,12 @@ export default class Cropper {
     ctx.msImageSmoothingEnabled = true;
     ctx.imageSmoothingEnabled = true;
     this.$el.appendChild(canvas);
+    renderBg(canvas);
   }
 
   async createModel(url) {
     const img = await ImageModel.loadImage(url);
-    if (!img) return;
-    this.createLimiter();
+    if (!img) throw new Error("image load failed! url %s is invalid!", url);
     this.model = new ImageModel({
       ...this.computeModelOptions(img),
       limiter: this.limiter,
@@ -76,18 +69,19 @@ export default class Cropper {
 
   createLimiter() {
     const {
-      $options: {maxRate, limitRect, width, height, devicePixelRatio},
+      $options: { maxRate, limitRect, width, height, devicePixelRatio }
     } = this;
 
     if (limitRect) {
       limitRect.x = limit(0, width)(limitRect.x);
       limitRect.y = limit(0, height)(limitRect.y);
-      limitRect.width = limit(0, limitRect.width - limitRect.x)(limitRect.width);
-      limitRect.height = limit(0, limitRect.height - limitRect.y)(limitRect.width);
+      limitRect.width = limit(0, width - limitRect.x)(limitRect.width);
+      limitRect.height = limit(0, height - limitRect.y)(limitRect.height);
     }
 
     const options = {
-      x: 0, y: 0,
+      x: 0,
+      y: 0,
       width,
       height,
       devicePixelRatio,
@@ -100,15 +94,15 @@ export default class Cropper {
     this.limiter = new Limiter(options);
   }
 
-  computeModelOptions({width, height}) {
-    const {width: WIDTH, height: HEIGHT} = this.$canvas;
+  // 计算图片初始位置
+  computeModelOptions({ width, height }) {
+    const { WIDTH, HEIGHT } = this;
     const imgRatio = width / height;
     const RATIO = WIDTH / HEIGHT;
     let result;
-    console.log(RATIO, imgRatio);
     // 当图片比例与容器不一致时，按照合适的方式布局图片
     if (RATIO === imgRatio) {
-      result = {x: 0, y: 0, width: WIDTH, height: HEIGHT};
+      result = { x: 0, y: 0, width: WIDTH, height: HEIGHT };
     } else if (RATIO < imgRatio) {
       console.log("宽超出");
       result = {
@@ -125,7 +119,6 @@ export default class Cropper {
       };
     }
     return result;
-
   }
 
   listenEvents() {
@@ -137,26 +130,42 @@ export default class Cropper {
     el.addEventListener("mouseleave", this.up);
   }
 
+  // region DOM事件
   down = e => {
     this.isDown = true;
     const point = e.touches ? e.touches[0] : e;
+
+    const { x, y } = this.getEventPoint(point);
+    this.isHitLimiter = isHit({ x, y }, this.limiter.rect);
     this.position.startX = point.clientX;
     this.position.startY = point.clientY;
-    this.position.endX = this.model.x;
-    this.position.endY = this.model.y;
+
+    let model = this.model;
+
+    if (this.isHitLimiter) {
+      model = this.limiter;
+    }
+    this.position.endX = model.x;
+    this.position.endY = model.y;
   };
 
   move = e => {
     if (!this.isDown) return;
-    const {clientX, clientY} = e.touches ? e.touches[0] : e;
+    const { clientX, clientY } = e.touches ? e.touches[0] : e;
     const {
-      position: {startX, startY, endX, endY},
-      $options: {devicePixelRatio: dpr}
+      position: { startX, startY, endX, endY },
+      $options: { devicePixelRatio: dpr }
     } = this;
     const deltaX = (clientX - startX) * dpr;
     const deltaY = (clientY - startY) * dpr;
 
-    this.model.move({
+    let model = this.model;
+
+    if (this.isHitLimiter) {
+      model = this.limiter;
+    }
+
+    model.move({
       x: endX + deltaX,
       y: endY + deltaY
     });
@@ -170,10 +179,16 @@ export default class Cropper {
 
   mouseWheel = e => {
     e.preventDefault();
+    const delta = limit(-1, 1)(e.wheelDelta || -e.deltaY || -e.detail);
+    const { x, y } = this.getEventPoint(e);
+    this.zoom({ x, y }, delta);
+  };
+  // endregion
+
+  // 将鼠标落点转换为canvas坐标
+  getEventPoint({ clientX, clientY }) {
+    // 节流慢操作
     clearTimeout(this.positionTimer);
-    const value = e.wheelDelta || -e.deltaY || -e.detail;
-    const delta = limit(-1, 1)(value);
-    const {clientX, clientY} = e;
     if (!this.wrapPosition) {
       const rect = this.$canvas.getBoundingClientRect();
       this.wrapPosition = {
@@ -184,31 +199,100 @@ export default class Cropper {
     const position = this.wrapPosition;
     const x = (clientX - position.x) * this.$options.devicePixelRatio;
     const y = (clientY - position.y) * this.$options.devicePixelRatio;
-    this.zoom({x, y}, delta);
-    // 节流会导致重排的操作
     this.positionTimer = setTimeout(() => {
       this.wrapPosition = null;
     }, 200);
-  };
+    return { x, y };
+  }
 
-  zoom(position, delta) {
-    const limitFn = limit(1, 10);
-
+  // 以一个坐标为中心,缩放图像
+  zoom(point, delta) {
+    const limitFn = limit(0.5, 10);
     const step = this.$options.wheelSpeed * -delta;
     const scale = +limitFn(this.model.scale + step).toFixed(2);
     // console.log("[mouse zoom on] ", position, scale, delta);
-    this.model.zoom(position, scale);
-    console.log("scale [%s], width [%s], height [%s], x [%s], y [%s]", scale, this.model.width, this.model.height, this.model.x, this.model.y);
+    this.model.zoom(point, scale);
+    console.log(
+      "scale [%s], width [%s], height [%s], x [%s], y [%s]",
+      scale,
+      this.model.width,
+      this.model.height,
+      this.model.x,
+      this.model.y
+    );
     this.render();
   }
 
   render() {
-    const {x, y, width, height, img} = this.model;
+    // requestAnimationFrame可以将回调放到浏览器渲染帧(相对空闲)时调用
+    requestAnimationFrame(() => {
+      const { ctx, WIDTH, HEIGHT } = this;
+      ctx.clearRect(0, 0, WIDTH, HEIGHT);
+      // 方案1.先绘制图像,绘制蒙层,抠出限制器,再次绘制图像
+      // this.renderModel();
+      // this.renderLimiter();
+
+      // 方案2.先绘制抠除窗口的蒙层,再将图像绘制到蒙层底部
+      // 如果合成操作性能消耗不大的话,理论上性能应该更优
+      ctx.save();
+      this.renderWindow();
+      ctx.globalCompositeOperation = "destination-over";
+      this.renderModel();
+      ctx.restore();
+    });
+  }
+
+  // 绘制图像
+  // 在此前需要更新model的属性
+  renderModel() {
+    const { x, y, width, height, img } = this.model;
     if (!img) return;
-    const {ctx} = this;
-    const {width: WIDTH, height: HEIGHT} = this.$canvas;
-    ctx.clearRect(0, 0, WIDTH, HEIGHT);
+    const { ctx } = this;
     ctx.drawImage(img, x, y, width, height);
+  }
+
+  // 绘制截图框
+  // 截图框即限制器
+  // 这里的方案是多次绘制
+  // 在此前已经绘制了图像,
+  // 再次绘制一个覆盖整个canvas的蒙层,
+  // 然后将限制器的轮廓抠出,
+  // 再次绘制图像,只有被抠出的图像会被绘制.
+  // 则形成了截图框内清晰,截图框外蒙层的效果
+  // 可以看出,这种方式绘制了两次图像,性能上是有问题的.
+  renderLimiter() {
+    const {
+      ctx,
+      limiter: { x, y, height, width },
+      WIDTH,
+      HEIGHT
+    } = this;
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    ctx.rect(x, y, width, height);
+    ctx.clip();
+    this.renderModel();
+
+    ctx.restore();
+  }
+
+  // 绘制一个空心的蒙层
+  renderWindow() {
+    const {
+      ctx,
+      limiter: { x, y, height, width },
+      WIDTH,
+      HEIGHT
+    } = this;
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.fillStyle = "#000";
+    ctx.fillRect(x, y, width, height);
+    ctx.restore();
   }
 }
 
@@ -226,8 +310,8 @@ const imgOptions = {
 // 为了保持原点位置不变，会同步修改它在外部环境中的坐标，即其x,y属性
 class ImageModel {
   constructor(props = {}) {
-    const options = {...imgOptions, ...props};
-    this.initialOptions = {...options};
+    const options = { ...imgOptions, ...props };
+    this.initialOptions = { ...options };
     this.limiter = options.limiter;
     this.x = options.x;
     this.y = options.y;
@@ -249,62 +333,52 @@ class ImageModel {
     });
   }
 
-  limitPosition = position => {
-    return this.limiter.limitPosition({...position, width: this.width, height: this.height});
-    /*  const {
-        $canvas: {width, height}
-      } = this.initialOptions.parent;
-      return {
-        x: limit(width - this.width, 0)(position.x),
-        y: limit(height - this.height, 0)(position.y)
-      };*/
-  };
-
-  limitSize = size => {
-    return this.limiter.limitSize(size);
-    /*const {width, height} = this.limiter;
-    return {
-      width: limit(width, width * 10)(size.width),
-      height: limit(height, height * 10)(size.height)
-    };*/
-  };
-
   // 移动到指定位置
   move(position) {
-    position = this.limitPosition(position);
+    position = this.limiter.limitPosition({
+      ...position,
+      width: this.width,
+      height: this.height
+    });
     this.x = position.x;
     this.y = position.y;
   }
 
   // 以一个坐标为中心点，缩放至指定倍数
-  zoom({x, y}, scale) {
-    this.scale = scale;
+  zoom({ x, y }, scale) {
     // region 计算新坐标
     // 计算缩放之后的新尺寸
-    const {width, height} = this.initialOptions;
+    const { width, height } = this.initialOptions;
 
-    const {width: newWidth, height: newHeight} = this.limitSize({
-      width: width * this.scale,
-      height: height * this.scale
+    // 用限制器重新计算受限尺寸
+    const { width: newWidth, height: newHeight } = this.limiter.limitSize({
+      width: width * scale,
+      height: height * scale
     });
 
     // 将外部坐标转换为内部坐标
-    this.origin.x = x - this.x;
-    this.origin.y = y - this.y;
+    const origin = { x: x - this.x, y: y - this.y };
+
     // 计算新坐标的偏移量
     // 以放大为例，原点距左侧，距顶部的距离增加，
     // 横轴增加量为（新尺寸下，原点距左侧的距离）-（旧尺寸下，原点距左侧的距离--即缩放前的原点x）
     // 纵轴增加量为（新尺寸下，原点距顶部的距离）-（缩放前的原点y)
     // 缩小同理
-    const deltaX = this.origin.x - (this.origin.x / this.width) * newWidth;
-    const deltaY = this.origin.y - (this.origin.y / this.height) * newHeight;
+    const deltaX = origin.x - (origin.x / this.width) * newWidth;
+    const deltaY = origin.y - (origin.y / this.height) * newHeight;
     // endregion
+    const position = this.limiter.limitPosition({
+      x: this.x + deltaX,
+      y: this.y + deltaY,
+      width: newWidth,
+      height: newHeight
+    });
+
+    // 尺寸被限制之后,与入参scale脱钩,这里重新计算scale
+    this.scale = newHeight / height;
+    this.origin = origin;
     this.width = newWidth;
     this.height = newHeight;
-    const position = this.limitPosition({
-      x: this.x + deltaX,
-      y: this.y + deltaY
-    });
     this.x = position.x;
     this.y = position.y;
   }
@@ -323,24 +397,38 @@ class Limiter {
     this.y = props.y * props.devicePixelRatio;
     this.width = props.width * props.devicePixelRatio;
     this.height = props.height * props.devicePixelRatio;
+  }
 
-    console.log(props);
+  // 动态BoundingRect
+  get rect() {
+    const { x, y, width, height } = this;
+    return {
+      top: y,
+      left: x,
+      right: x + width,
+      bottom: y + height
+    };
+  }
+
+  move({ x, y }) {
+    this.x = x;
+    this.y = y;
   }
 
   limitPosition(rect) {
-    const {width, height, x, y} = this;
-
+    const { width, height, x, y } = this;
     return {
       x: limit(width - rect.width + x, x)(rect.x),
-      y: limit(y - height, y)(rect.y)
+      y: limit(y - rect.height + height, y)(rect.y)
     };
   }
 
   limitSize(size) {
     const ratio = (size.width / size.height).toFixed(4);
-    const {width, height, maxHeight, maxWidth} = this;
+    const { width, height, maxHeight, maxWidth } = this;
     let w = limit(width, maxWidth)(size.width);
     let h = limit(height, maxHeight)(size.height);
+    // 进入受限范围,按比例重新计算尺寸
     if (ratio !== (w / h).toFixed(4)) {
       w = h * ratio;
     }
@@ -350,5 +438,3 @@ class Limiter {
     };
   }
 }
-
-const order = ([min, max]) => min > max ? [max, min] : [min, max];
