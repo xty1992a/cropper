@@ -1,12 +1,11 @@
 import {
-  debounce,
+  dataURLtoBlob,
   EmitAble,
   isHit,
   limit,
   listen,
   listenWheel,
-  renderBg,
-  dataURLtoBlob
+  renderBg
 } from "./utils";
 
 const dftOptions = {
@@ -103,7 +102,8 @@ export default class Cropper extends EmitAble {
       if (!img) throw new Error("image load failed! url %s is invalid!", url);
       this.model = new ImageModel({
         ...this.computeModelOptions(img),
-        parent: this
+        limiter: this.limiter,
+        window: this.window
       });
       this.model.putImage(img);
       cb && cb();
@@ -183,10 +183,12 @@ export default class Cropper extends EmitAble {
     this.limiter = new Limiter(limiterOptions);
     this.window = new Limiter(windowOptions);
 
-    this.window.modelX = this.limiter.modelX = this.model.x;
-    this.window.modelY = this.limiter.modelY = this.model.y;
-    this.window.modelWidth = this.limiter.modelWidth = this.model.width;
-    this.window.modelHeight = this.limiter.modelHeight = this.model.height;
+    /*    this.window.modelX = this.limiter.modelX = this.model.x;
+        this.window.modelY = this.limiter.modelY = this.model.y;
+        this.window.modelWidth = this.limiter.modelWidth = this.model.width;
+        this.window.modelHeight = this.limiter.modelHeight = this.model.height;*/
+
+    this.window.model = this.limiter.model = this.model;
 
     console.log(this.window);
     if (MODE === "contain") {
@@ -278,6 +280,7 @@ export default class Cropper extends EmitAble {
     this.position.startX = point.clientX;
     this.position.startY = point.clientY;
     const resizeRect = (this.resizeRect = this.hitResizeRect({ x, y }));
+    this.resizeRect && (this.resizeRect = { ...this.resizeRect });
 
     if (resizeRect) {
       this.position.endX = resizeRect.x + resizeRect.size / 2;
@@ -309,8 +312,8 @@ export default class Cropper extends EmitAble {
     const deltaY = (clientY - startY) * dpr;
 
     let model = this.model;
-    this.window.modelX = this.limiter.modelX = this.model.x;
-    this.window.modelY = this.limiter.modelY = this.model.y;
+    // this.window.modelX = this.limiter.modelX = this.model.x;
+    // this.window.modelY = this.limiter.modelY = this.model.y;
     if (!this.resizeRect) {
       if (this.isHitWindow && this.window.moveable) {
         model = this.window;
@@ -344,8 +347,8 @@ export default class Cropper extends EmitAble {
     e.preventDefault();
     const delta = limit(-1, 1)(e.wheelDelta || -e.deltaY || -e.detail);
     const { x, y } = this.getEventPoint(e);
-    this.window.modelWidth = this.limiter.modelWidth = this.model.width;
-    this.window.modelHeight = this.limiter.modelHeight = this.model.height;
+    // this.window.modelWidth = this.limiter.modelWidth = this.model.width;
+    // this.window.modelHeight = this.limiter.modelHeight = this.model.height;
     this.zoom({ x, y }, delta);
   };
   // endregion
@@ -611,27 +614,31 @@ class ImageModel extends EmitAble {
 class Limiter extends EmitAble {
   constructor(props) {
     super();
-    const dpr = (this.dpr = props.devicePixelRatio);
+
+    this.$props = props;
+
     this.FREE = Boolean(props.free);
     this.moveable = props.moveable;
     this.resizable = props.resizable;
+    const dpr = (this.dpr = props.devicePixelRatio);
     this.WIDTH = props.WIDTH;
     this.HEIGHT = props.HEIGHT;
     this.x = props.x * dpr;
     this.y = props.y * dpr;
     this.width = props.width * dpr;
     this.height = props.height * dpr;
+    this.maxRate = props.maxRate;
     this.resizeSize = (props.resizeSize || 5) * dpr;
     this.resizeColor = props.resizeColor || "#39f";
     // console.log(props.width, props.devicePixelRatio);
   }
 
-  get maxWidth() {
-    return this.width * this.dpr;
+  get maxModelWidth() {
+    return this.width * this.maxRate;
   }
 
-  get maxHeight() {
-    return this.height * this.dpr;
+  get maxModelHeight() {
+    return this.height * this.maxRate;
   }
 
   // 动态BoundingRect
@@ -644,7 +651,9 @@ class Limiter extends EmitAble {
       rect: { top, left, right, bottom },
       resizeSize,
       x,
-      y
+      y,
+      width,
+      height
     } = this;
     const size = resizeSize / 2;
     const m_w = left + this.width / 2;
@@ -669,6 +678,8 @@ class Limiter extends EmitAble {
     ].map((it, index) => ({
       parentX: x,
       parentY: y,
+      parentWidth: width,
+      parentHeight: height,
       ...it,
       index,
       size: resizeSize,
@@ -698,76 +709,132 @@ class Limiter extends EmitAble {
   }
 
   get minX() {
-    const { WIDTH, HEIGHT, FREE, moveable } = this;
+    const { FREE, modelX } = this;
+    return FREE ? 0 : Math.max(0, modelX);
+  }
+
+  get minY() {
+    const { FREE, modelY } = this;
+    return FREE ? 0 : Math.max(0, modelY);
+  }
+
+  get maxX() {
+    const { WIDTH, FREE, modelX, width, modelWidth } = this;
+    return FREE
+      ? WIDTH - width
+      : Math.min(WIDTH - width, modelWidth + modelX - width);
+  }
+
+  get maxY() {
+    const { HEIGHT, FREE, height, modelY, modelHeight } = this;
+    return FREE
+      ? HEIGHT - height
+      : Math.min(HEIGHT - height, modelHeight + modelY - height);
+  }
+
+  get maxWidth() {
+    const { WIDTH, FREE, modelX, x, modelWidth } = this;
+    return FREE ? WIDTH : Math.min(modelWidth + modelX - x, WIDTH - x);
+  }
+
+  get maxHeight() {
+    const { HEIGHT, FREE, modelY, y, modelHeight } = this;
+    return FREE ? HEIGHT : Math.min(modelHeight + modelY - y, HEIGHT - y);
+  }
+
+  get modelWidth() {
+    return this.model.width;
+  }
+
+  get modelHeight() {
+    return this.model.height;
+  }
+
+  get modelX() {
+    return this.model.x;
+  }
+
+  get modelY() {
+    return this.model.y;
   }
 
   move({ x, y }) {
-    const {
-      WIDTH,
-      HEIGHT,
-      FREE,
-      moveable,
-      modelX,
-      modelY,
-      modelWidth,
-      modelHeight
-    } = this;
+    const { minX, minY, maxX, maxY, moveable } = this;
     // console.log(width, modelWidth);
     if (!moveable) return;
-    const minX = FREE ? 0 : Math.max(0, modelX);
-    const minY = FREE ? 0 : Math.max(0, modelY);
-    const maxX = FREE
-      ? WIDTH - this.width
-      : Math.min(WIDTH - this.width, modelWidth + modelX - this.width);
-    const maxY = FREE
-      ? HEIGHT - this.height
-      : Math.min(HEIGHT - this.height, modelHeight + modelY - this.height);
+    /*    const minX = FREE ? 0 : Math.max(0, modelX);
+        const minY = FREE ? 0 : Math.max(0, modelY);
+        const maxX = FREE
+          ? WIDTH - this.width
+          : Math.min(WIDTH - this.width, modelWidth + modelX - this.width);
+        const maxY = FREE
+          ? HEIGHT - this.height
+          : Math.min(HEIGHT - this.height, modelHeight + modelY - this.height);*/
     this.x = limit(minX, maxX)(x);
     this.y = limit(minY, maxY)(y);
 
     this.fire("change", { x: this.x, y: this.y });
   }
 
-  resize({ x, y }, rect) {
-    const deltaH = y - this.y;
-    const deltaW = x - this.x;
+  resize({ x, y }, { index, parentHeight, parentWidth, parentX, parentY }) {
+    const {
+      rect: { right, bottom }
+    } = this;
+    const limitHeight = limit(0, this.maxHeight);
+    const limitWidth = limit(0, this.maxWidth);
+    const limitX = limit(this.minX, this.maxX);
+    const limitY = limit(this.minY, this.maxY);
+    // x = limitX(x);
+    // y = limitY(y);
 
-    switch (rect.index) {
+    const newHeight = parentHeight + parentY - limitY(y);
+    const newWidth = parentWidth + parentX - limitX(x);
+
+    const newRight = parentWidth - newWidth - limitX(x) + x;
+    const newBottom = parentHeight - newHeight - limitY(y) + y;
+
+    switch (index) {
       case 0:
-        this.height -= deltaH;
+        this.height = newHeight;
         this.y = y;
-        this.width -= deltaW;
+        this.width = newWidth;
         this.x = x;
         break;
       case 1:
-        this.height -= deltaH;
+        this.height = newHeight;
         this.y = y;
         break;
       case 2:
         this.y = y;
-        this.height -= deltaH;
-        this.width += x - this.rect.right;
+        this.height = newHeight;
+        this.width = newRight;
         break;
       case 3:
-        this.width += x - this.rect.right;
+        this.width = newRight;
         break;
       case 4:
-        this.width += x - this.rect.right;
-        this.height += y - this.rect.bottom;
+        this.width = newRight;
+        this.height = newBottom;
         break;
       case 5:
-        this.height += y - this.rect.bottom;
+        this.height = newBottom;
         break;
       case 6:
-        this.height += y - this.rect.bottom;
-        this.width -= deltaW;
+        this.height = newBottom;
+        this.width = newWidth;
         this.x = x;
         break;
       case 7:
-        this.width -= deltaW;
+        this.width = newWidth;
         this.x = x;
         break;
     }
+
+    this.height = limitHeight(this.height);
+    this.width = limitWidth(this.width);
+    this.x = limitX(this.x);
+    this.y = limitY(this.y);
+
     this.fire("change", {
       x: this.x,
       y: this.y,
@@ -779,18 +846,17 @@ class Limiter extends EmitAble {
   limitPosition(rect) {
     const { width, height, x, y, FREE } = this;
     return {
-      x: FREE ? rect.x : limit(width - rect.width + x, x)(rect.x),
-      y: FREE ? rect.y : limit(y - rect.height + height, y)(rect.y)
+      x: FREE ? rect.x : limit(width - this.modelWidth + x, x)(rect.x),
+      y: FREE ? rect.y : limit(y - this.modelHeight + height, y)(rect.y)
     };
   }
 
   limitSize(size) {
     const ratio = (size.width / size.height).toFixed(4);
-    const { width, height, maxHeight, maxWidth, FREE } = this;
-    let w = limit(width, maxWidth)(size.width);
-    let h = limit(height, maxHeight)(size.height);
+    const { width, height, maxModelHeight, maxModelWidth, FREE } = this;
+    let w = limit(width, maxModelWidth)(size.width);
+    let h = limit(height, maxModelHeight)(size.height);
 
-    // console.log(size.width, w, width, height, maxWidth);
     // 进入受限范围,按比例重新计算尺寸
     const imgRatio = (w / h).toFixed(4);
     if (ratio !== (w / h).toFixed(4)) {

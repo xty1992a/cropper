@@ -5,7 +5,7 @@ import { debounce } from "./packages/utils";
 
 const elList = [
   {
-    width: 300,
+    width: 600,
     height: 375,
     url: "static/field.jpg",
     cropMode: "window",
@@ -16,7 +16,7 @@ const elList = [
       x: 50,
       y: 50,
       width: 200,
-      height: 275
+      height: 200
     }
   }
   /* {
