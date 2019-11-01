@@ -19,6 +19,8 @@ const dftOptions = {
   minRate: 0.5, // 图片最小缩小倍数
   cropMode: "cover", //  截图模式,cover表示不留白边拖动时也无法拖出
   maskColor: "rgba(0,0,0,0.6)", // 蒙层颜色
+  windowResizable: true,
+  windowMoveable: true,
   devicePixelRatio: window.devicePixelRatio || 1 // dpr
 };
 
@@ -92,10 +94,6 @@ export default class Cropper extends EmitAble {
     this.HEIGHT = canvas.height = height * devicePixelRatio;
     canvas.style.width = width + "px";
     canvas.style.height = height + "px";
-    ctx.mozImageSmoothingEnabled = true;
-    ctx.webkitImageSmoothingEnabled = true;
-    ctx.msImageSmoothingEnabled = true;
-    ctx.imageSmoothingEnabled = true;
     this.$el.appendChild(canvas);
     renderBg(canvas);
   }
@@ -134,11 +132,9 @@ export default class Cropper extends EmitAble {
       };
     }
 
-    window.maxWidth = maxRate * window.width;
-    window.maxHeight = maxRate * window.height;
-
     return {
       ...window,
+      maxRate,
       WIDTH,
       HEIGHT,
       devicePixelRatio
@@ -157,7 +153,10 @@ export default class Cropper extends EmitAble {
       $options: { width, height }
     } = this;
     const windowOptions = this.fmtWindow();
-    windowOptions.moveable = ["window", "free-window"].includes(MODE);
+    this.windowMoveable = windowOptions.moveable =
+      ["window", "free-window"].includes(MODE) && this.$options.windowMoveable;
+    this.windowResizable = windowOptions.resizable =
+      ["window", "free-window"].includes(MODE) && this.$options.windowResizable;
     const limiterOptions = { ...windowOptions };
     switch (MODE) {
       case "cover":
@@ -183,6 +182,13 @@ export default class Cropper extends EmitAble {
     }
     this.limiter = new Limiter(limiterOptions);
     this.window = new Limiter(windowOptions);
+
+    this.window.modelX = this.limiter.modelX = this.model.x;
+    this.window.modelY = this.limiter.modelY = this.model.y;
+    this.window.modelWidth = this.limiter.modelWidth = this.model.width;
+    this.window.modelHeight = this.limiter.modelHeight = this.model.height;
+
+    console.log(this.window);
     if (MODE === "contain") {
       this.model.on("change", model => {
         this.limiter.x = model.x;
@@ -193,16 +199,10 @@ export default class Cropper extends EmitAble {
     }
     // window模式,限制框与截图框同步
     if (MODE === "window") {
-      this.window.on(
-        "change",
-        debounce(changes => {
-          Object.keys(changes).forEach(
-            key => (this.limiter[key] = changes[key])
-          );
-        })
-      );
+      this.window.on("change", changes => {
+        Object.keys(changes).forEach(key => (this.limiter[key] = changes[key]));
+      });
     }
-    //
   }
 
   // 计算图片初始位置
@@ -261,6 +261,12 @@ export default class Cropper extends EmitAble {
     listen(el, "mouseleave", this.up);
   }
 
+  hitResizeRect(point) {
+    if (!this.windowResizable) return null;
+    const { resizeRect } = this.window;
+    return resizeRect.find(it => isHit(point, it)) || null;
+  }
+
   // region DOM事件
   down = e => {
     if (!this.model) return;
@@ -271,7 +277,13 @@ export default class Cropper extends EmitAble {
     this.isHitWindow = isHit({ x, y }, this.window.rect);
     this.position.startX = point.clientX;
     this.position.startY = point.clientY;
+    const resizeRect = (this.resizeRect = this.hitResizeRect({ x, y }));
 
+    if (resizeRect) {
+      this.position.endX = resizeRect.x + resizeRect.size / 2;
+      this.position.endY = resizeRect.y + resizeRect.size / 2;
+      return;
+    }
     let model = this.model;
 
     if (this.isHitWindow && this.window.moveable) {
@@ -282,9 +294,13 @@ export default class Cropper extends EmitAble {
   };
 
   move = e => {
+    const { clientX, clientY } = e.touches ? e.touches[0] : e;
+    const resizeRect =
+      this.hitResizeRect(this.getEventPoint({ clientX, clientY })) ||
+      this.resizeRect;
+    this.$canvas.style.cursor = resizeRect ? resizeRect.cursor : "";
     if (!this.model) return;
     if (!this.isDown) return;
-    const { clientX, clientY } = e.touches ? e.touches[0] : e;
     const {
       position: { startX, startY, endX, endY },
       $options: { devicePixelRatio: dpr }
@@ -293,25 +309,34 @@ export default class Cropper extends EmitAble {
     const deltaY = (clientY - startY) * dpr;
 
     let model = this.model;
+    this.window.modelX = this.limiter.modelX = this.model.x;
+    this.window.modelY = this.limiter.modelY = this.model.y;
+    if (!this.resizeRect) {
+      if (this.isHitWindow && this.window.moveable) {
+        model = this.window;
+      }
 
-    if (this.isHitWindow && this.window.moveable) {
-      model = this.window;
+      model.move({
+        x: endX + deltaX,
+        y: endY + deltaY
+      });
+    } else {
+      this.window.resize(
+        {
+          x: endX + deltaX,
+          y: endY + deltaY
+        },
+        this.resizeRect
+      );
     }
 
-    model.move({
-      x: endX + deltaX,
-      y: endY + deltaY,
-      width: this.model.width,
-      height: this.model.height,
-      modelX: this.model.x,
-      modelY: this.model.y
-    });
     this.render();
   };
 
   up = () => {
     if (!this.model) return;
     if (!this.isDown) return;
+    this.resizeRect = null;
     this.isDown = false;
   };
 
@@ -319,6 +344,8 @@ export default class Cropper extends EmitAble {
     e.preventDefault();
     const delta = limit(-1, 1)(e.wheelDelta || -e.deltaY || -e.detail);
     const { x, y } = this.getEventPoint(e);
+    this.window.modelWidth = this.limiter.modelWidth = this.model.width;
+    this.window.modelHeight = this.limiter.modelHeight = this.model.height;
     this.zoom({ x, y }, delta);
   };
   // endregion
@@ -367,19 +394,14 @@ export default class Cropper extends EmitAble {
     requestAnimationFrame(() => {
       const { ctx, WIDTH, HEIGHT } = this;
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
-      // 方案1.先绘制图像,绘制蒙层,抠出限制器,再次绘制图像
-      // this.renderModel();
-      // this.renderLimiter();
-
-      // 方案2.先绘制抠除窗口的蒙层,再将图像绘制到蒙层底部
-      // 如果合成操作性能消耗不大的话,理论上性能应该更优
+      // 先绘制抠除窗口的蒙层,再将图像绘制到蒙层底部
       ctx.save();
       this.renderWindow();
       ctx.globalCompositeOperation = "destination-over";
       this.renderModel();
       ctx.restore();
       setTimeout(() => {
-        // 将
+        // 派发事件到外部,数据是model的尺寸以及与相对于截图框的位移
         this.fire("change", {
           x: (this.model.x - this.window.x) / this.$options.devicePixelRatio,
           y: (this.model.y - this.window.y) / this.$options.devicePixelRatio,
@@ -399,34 +421,6 @@ export default class Cropper extends EmitAble {
     ctx.drawImage(img, x, y, width, height);
   }
 
-  // 绘制截图框
-  // 截图框即限制器
-  // 这里的方案是多次绘制
-  // 在此前已经绘制了图像,
-  // 再次绘制一个覆盖整个canvas的蒙层,
-  // 然后将限制器的轮廓抠出,
-  // 再次绘制图像,只有被抠出的图像会被绘制.
-  // 则形成了截图框内清晰,截图框外蒙层的效果
-  // 可以看出,这种方式绘制了两次图像,性能上是有问题的.
-  renderLimiter() {
-    const {
-      ctx,
-      WIDTH,
-      HEIGHT,
-      $options: { maskColor },
-      limiter: { x, y, height, width }
-    } = this;
-    ctx.save();
-    ctx.fillStyle = maskColor;
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-    ctx.rect(x, y, width, height);
-    ctx.clip();
-    this.renderModel();
-
-    ctx.restore();
-  }
-
   // 绘制一个空心的蒙层
   renderWindow() {
     const {
@@ -434,7 +428,7 @@ export default class Cropper extends EmitAble {
       WIDTH,
       HEIGHT,
       $options: { maskColor },
-      window: { x, y, height, width }
+      window: { x, y, height, width, resizable, resizeRect, rect, splitLine }
     } = this;
 
     // console.log(' window : %s %s \n limiter: %s %s', this.window.x, this.window.y, this.limiter.x, this.limiter.y);
@@ -445,35 +439,66 @@ export default class Cropper extends EmitAble {
     ctx.fillStyle = "#000";
     ctx.fillRect(x, y, width, height);
     ctx.restore();
+    if (resizable) {
+      ctx.save();
+      ctx.fillStyle = "#39f";
+      ctx.lineWidth = 1 * this.$options.devicePixelRatio;
+      ctx.strokeStyle = "#39f";
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(rect.right, y);
+      ctx.lineTo(rect.right, rect.bottom);
+      ctx.lineTo(rect.left, rect.bottom);
+      ctx.closePath();
+      ctx.stroke();
+
+      ctx.save();
+      ctx.setLineDash([5, 10]);
+      ctx.strokeStyle = "#fff";
+
+      splitLine.forEach(list => {
+        ctx.beginPath();
+        ctx.moveTo(list[0].x, list[0].y);
+        ctx.lineTo(list[1].x, list[1].y);
+        ctx.stroke();
+      });
+      ctx.restore();
+      resizeRect.forEach(rect => {
+        ctx.fillRect(rect.x, rect.y, rect.size, rect.size);
+      });
+      ctx.restore();
+    }
   }
 
   // endregion
 
-  getCropImage = () => {
+  getCropImage = ({ mime, quality }) => {
     const {
-      ctx,
-      window: { x, y, width, height },
-      $options: { devicePixelRatio }
+      model,
+      window: { x, y, width, height }
     } = this;
-    const data = ctx.getImageData(x, y, width, height);
     const canvas =
       this.outputCanvas ||
       (this.outputCanvas = document.createElement("canvas"));
     canvas.width = width;
     canvas.height = height;
-    const c = canvas.getContext("2d");
-    c.putImageData(data, 0, 0);
-    return canvas.toDataURL();
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(
+      model.img,
+      model.x - x,
+      model.y - y,
+      model.width,
+      model.height
+    );
+    return canvas.toDataURL(mime, quality);
   };
 
   // 库本身不打包Promise
-  output = options =>
-    new window.Promise((resolve, reject) => {
+  output = options => {
+    return new window.Promise((resolve, reject) => {
       try {
         options = { ...outputOptions, ...options };
-        // if (opt.type === 'blob') {
-        // }
-        let data = this.getCropImage();
+        let data = this.getCropImage(options);
         if (options.type === "blob") {
           data = dataURLtoBlob(data);
         }
@@ -484,6 +509,7 @@ export default class Cropper extends EmitAble {
         reject(e);
       }
     });
+  };
 }
 
 const imgOptions = {
@@ -585,46 +611,169 @@ class ImageModel extends EmitAble {
 class Limiter extends EmitAble {
   constructor(props) {
     super();
+    const dpr = (this.dpr = props.devicePixelRatio);
     this.FREE = Boolean(props.free);
     this.moveable = props.moveable;
+    this.resizable = props.resizable;
     this.WIDTH = props.WIDTH;
     this.HEIGHT = props.HEIGHT;
-    this.maxWidth = props.maxWidth * props.devicePixelRatio;
-    this.maxHeight = props.maxHeight * props.devicePixelRatio;
-    this.x = props.x * props.devicePixelRatio;
-    this.y = props.y * props.devicePixelRatio;
-    this.width = props.width * props.devicePixelRatio;
-    this.height = props.height * props.devicePixelRatio;
+    this.x = props.x * dpr;
+    this.y = props.y * dpr;
+    this.width = props.width * dpr;
+    this.height = props.height * dpr;
+    this.resizeSize = (props.resizeSize || 5) * dpr;
+    this.resizeColor = props.resizeColor || "#39f";
     // console.log(props.width, props.devicePixelRatio);
+  }
+
+  get maxWidth() {
+    return this.width * this.dpr;
+  }
+
+  get maxHeight() {
+    return this.height * this.dpr;
   }
 
   // 动态BoundingRect
   get rect() {
-    const { x, y, width, height } = this;
-    return {
-      top: y,
-      left: x,
-      right: x + width,
-      bottom: y + height
-    };
+    return computeRect(this);
   }
 
-  // width和height是model的尺寸
-  move({ x, y, width, height, modelX, modelY }) {
+  get resizeRect() {
+    const {
+      rect: { top, left, right, bottom },
+      resizeSize,
+      x,
+      y
+    } = this;
+    const size = resizeSize / 2;
+    const m_w = left + this.width / 2;
+    const m_h = top + this.height / 2;
+    /*
+     * [0]--[1]--[2]
+     * |				  |
+     * [7]			 [3]
+     * |				  |
+     * [6]--[5]--[4]
+     *
+     * */
+    return [
+      { cursor: "nwse", x: left - size, y: top - size },
+      { cursor: "ns", x: m_w - size, y: top - size },
+      { cursor: "nesw", x: right - size, y: top - size },
+      { cursor: "ew", x: right - size, y: m_h - size },
+      { cursor: "nwse", x: right - size, y: bottom - size },
+      { cursor: "ns", x: m_w - size, y: bottom - size },
+      { cursor: "nesw", x: left - size, y: bottom - size },
+      { cursor: "ew", x: left - size, y: m_h - size }
+    ].map((it, index) => ({
+      parentX: x,
+      parentY: y,
+      ...it,
+      index,
+      size: resizeSize,
+      cursor: it.cursor + "-resize",
+      ...computeRect({ ...it, width: resizeSize, height: resizeSize })
+    }));
+  }
+
+  get splitLine() {
+    const {
+      rect: { top, left, right, bottom },
+      width,
+      height,
+      x,
+      y
+    } = this;
+    const w0 = x + width / 3;
+    const w1 = x + (width * 2) / 3;
+    const h0 = y + height / 3;
+    const h1 = y + (height * 2) / 3;
+    return [
+      [{ x: w0, y }, { x: w0, y: bottom }],
+      [{ x: w1, y }, { x: w1, y: bottom }],
+      [{ x, y: h0 }, { x: right, y: h0 }],
+      [{ x, y: h1 }, { x: right, y: h1 }]
+    ];
+  }
+
+  get minX() {
     const { WIDTH, HEIGHT, FREE, moveable } = this;
+  }
+
+  move({ x, y }) {
+    const {
+      WIDTH,
+      HEIGHT,
+      FREE,
+      moveable,
+      modelX,
+      modelY,
+      modelWidth,
+      modelHeight
+    } = this;
+    // console.log(width, modelWidth);
     if (!moveable) return;
     const minX = FREE ? 0 : Math.max(0, modelX);
     const minY = FREE ? 0 : Math.max(0, modelY);
     const maxX = FREE
       ? WIDTH - this.width
-      : Math.min(WIDTH - this.width, width + modelX - this.width);
+      : Math.min(WIDTH - this.width, modelWidth + modelX - this.width);
     const maxY = FREE
       ? HEIGHT - this.height
-      : Math.min(HEIGHT - this.height, height + modelY - this.height);
+      : Math.min(HEIGHT - this.height, modelHeight + modelY - this.height);
     this.x = limit(minX, maxX)(x);
     this.y = limit(minY, maxY)(y);
 
     this.fire("change", { x: this.x, y: this.y });
+  }
+
+  resize({ x, y }, rect) {
+    const deltaH = y - this.y;
+    const deltaW = x - this.x;
+
+    switch (rect.index) {
+      case 0:
+        this.height -= deltaH;
+        this.y = y;
+        this.width -= deltaW;
+        this.x = x;
+        break;
+      case 1:
+        this.height -= deltaH;
+        this.y = y;
+        break;
+      case 2:
+        this.y = y;
+        this.height -= deltaH;
+        this.width += x - this.rect.right;
+        break;
+      case 3:
+        this.width += x - this.rect.right;
+        break;
+      case 4:
+        this.width += x - this.rect.right;
+        this.height += y - this.rect.bottom;
+        break;
+      case 5:
+        this.height += y - this.rect.bottom;
+        break;
+      case 6:
+        this.height += y - this.rect.bottom;
+        this.width -= deltaW;
+        this.x = x;
+        break;
+      case 7:
+        this.width -= deltaW;
+        this.x = x;
+        break;
+    }
+    this.fire("change", {
+      x: this.x,
+      y: this.y,
+      width: this.width,
+      height: this.height
+    });
   }
 
   limitPosition(rect) {
@@ -643,8 +792,14 @@ class Limiter extends EmitAble {
 
     // console.log(size.width, w, width, height, maxWidth);
     // 进入受限范围,按比例重新计算尺寸
+    const imgRatio = (w / h).toFixed(4);
     if (ratio !== (w / h).toFixed(4)) {
-      w = h * ratio;
+      if (ratio > imgRatio) {
+        console.log("larger then image");
+        w = h * ratio;
+      } else {
+        h = w / ratio;
+      }
     }
     return {
       width: FREE ? size.width : w,
@@ -652,3 +807,10 @@ class Limiter extends EmitAble {
     };
   }
 }
+
+const computeRect = ({ x, y, width, height }) => ({
+  top: y,
+  left: x,
+  right: x + width,
+  bottom: y + height
+});

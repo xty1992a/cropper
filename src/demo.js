@@ -9,37 +9,40 @@ const elList = [
     height: 375,
     url: "static/field.jpg",
     cropMode: "window",
-    window: {
-      x: 100,
-      y: 100,
-      width: 200,
-      height: 275
-    }
-  },
-  {
-    width: 300,
-    height: 375,
-    url: "static/field.jpg",
+    devicePixelRatio: 3,
     minRate: 0.1,
-    cropMode: "free-window",
+    // windowMoveable: false,
     window: {
+      x: 50,
+      y: 50,
       width: 200,
       height: 275
     }
-  },
-  {
-    width: 300,
-    height: 375,
-    devicePixelRatio: 2,
-    url: "static/geralt_of_rivia.jpg",
-    cropMode: "cover"
-  },
-  {
-    width: 300,
-    height: 375,
-    url: "static/geralt_of_rivia.jpg",
-    cropMode: "contain"
   }
+  /* {
+	 width: 300,
+	 height: 375,
+	 url: "static/field.jpg",
+	 minRate: 0.1,
+	 cropMode: "free-window",
+	 window: {
+	   width: 200,
+	   height: 275
+	 }
+   },
+   {
+	 width: 300,
+	 height: 375,
+	 devicePixelRatio: 2,
+	 url: "static/geralt_of_rivia.jpg",
+	 cropMode: "cover"
+   },
+   {
+	 width: 300,
+	 height: 375,
+	 url: "static/geralt_of_rivia.jpg",
+	 cropMode: "contain"
+   }*/
 ];
 
 function preview(opt, index) {
@@ -104,7 +107,7 @@ function main() {
     crop.on("ready", output);
     crop.on("change", e => {
       sync(e);
-      output();
+      // output();
     });
     section.appendChild(el);
     frag.appendChild(section);
