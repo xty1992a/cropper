@@ -10,10 +10,10 @@ const root = p => path.join(__dirname, "..", p);
 const workspace = root(".");
 
 module.exports = (env, argv) => {
-  return merge(base({root, workspace}), {
+  return merge(base({ root, workspace }), {
     mode: "development",
     entry: {
-      app: root("src/demo.js"),
+      app: root("src/demo.js")
     },
     devServer: {
       contentBase: path.resolve(__dirname, ".."),
@@ -22,7 +22,7 @@ module.exports = (env, argv) => {
       port: 8089,
       host: "localhost",
       publicPath: "/",
-      disableHostCheck: true,
+      disableHostCheck: true
     },
     plugins: [
       new webpack.HotModuleReplacementPlugin(),
@@ -30,8 +30,8 @@ module.exports = (env, argv) => {
         filename: "index.html",
         template: "index.html",
         inject: true,
-        hash: true,
-      }),
-    ],
+        hash: true
+      })
+    ]
   });
 };

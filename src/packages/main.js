@@ -5,7 +5,8 @@ import {
   limit,
   listen,
   listenWheel,
-  renderBg
+  renderBg,
+  dataURLtoBlob
 } from "./utils";
 
 const dftOptions = {
@@ -19,6 +20,14 @@ const dftOptions = {
   cropMode: "cover", //  截图模式,cover表示不留白边拖动时也无法拖出
   maskColor: "rgba(0,0,0,0.6)", // 蒙层颜色
   devicePixelRatio: window.devicePixelRatio || 1 // dpr
+};
+
+const outputOptions = {
+  mime: "image/png",
+  type: "base64",
+  quality: 1,
+  success: () => {},
+  fail: () => {}
 };
 
 /*
@@ -40,8 +49,9 @@ const dftOptions = {
  * free-window即在contain的基础上,添加了一个window.
  * */
 
-export default class Cropper {
+export default class Cropper extends EmitAble {
   constructor(el, opt = {}) {
+    super();
     if (!(el instanceof Element)) {
       el = document.querySelector(el);
     }
@@ -67,6 +77,10 @@ export default class Cropper {
       this.createLimiter();
       this.model.limiter = this.limiter;
       this.render();
+      console.log("fire ready");
+      setTimeout(() => {
+        this.fire("ready");
+      }, 20);
     });
   }
 
@@ -167,10 +181,8 @@ export default class Cropper {
         windowOptions.free = true;
         break;
     }
-    console.log(limiterOptions);
     this.limiter = new Limiter(limiterOptions);
     this.window = new Limiter(windowOptions);
-    console.log(MODE, this.limiter);
     if (MODE === "contain") {
       this.model.on("change", model => {
         this.limiter.x = model.x;
@@ -184,7 +196,6 @@ export default class Cropper {
       this.window.on(
         "change",
         debounce(changes => {
-          console.log("sync limiter with window");
           Object.keys(changes).forEach(
             key => (this.limiter[key] = changes[key])
           );
@@ -219,15 +230,24 @@ export default class Cropper {
 
     // 当图片比例与容器不一致时，按照合适的方式布局图片
     if (RATIO !== imgRatio) {
+      // 容器宽度不足,顶住高度
       if (RATIO < imgRatio) {
         result = fill_height;
-      } else {
+      }
+      // 容器高度不足,顶住宽度
+      else {
         result = fill_width;
       }
     }
 
+    // contain模式应该顶住短边,正好反转
     if (["contain"].includes(MODE)) {
-      result = result === fill_height ? fill_width : fill_height;
+      result =
+        result === fill_height
+          ? fill_width
+          : result === fill_width
+          ? fill_height
+          : result;
     }
     return result;
   }
@@ -248,7 +268,6 @@ export default class Cropper {
     const point = e.touches ? e.touches[0] : e;
 
     const { x, y } = this.getEventPoint(point);
-    console.log(x, y, this.window.rect);
     this.isHitWindow = isHit({ x, y }, this.window.rect);
     this.position.startX = point.clientX;
     this.position.startY = point.clientY;
@@ -258,7 +277,6 @@ export default class Cropper {
     if (this.isHitWindow && this.window.moveable) {
       model = this.window;
     }
-    console.log(this.isHitWindow, "is hit window", model);
     this.position.endX = model.x;
     this.position.endY = model.y;
   };
@@ -360,6 +378,15 @@ export default class Cropper {
       ctx.globalCompositeOperation = "destination-over";
       this.renderModel();
       ctx.restore();
+      setTimeout(() => {
+        // 将
+        this.fire("change", {
+          x: (this.model.x - this.window.x) / this.$options.devicePixelRatio,
+          y: (this.model.y - this.window.y) / this.$options.devicePixelRatio,
+          height: this.model.height / this.$options.devicePixelRatio,
+          width: this.model.width / this.$options.devicePixelRatio
+        });
+      });
     });
   }
 
@@ -421,6 +448,42 @@ export default class Cropper {
   }
 
   // endregion
+
+  getCropImage = () => {
+    const {
+      ctx,
+      window: { x, y, width, height },
+      $options: { devicePixelRatio }
+    } = this;
+    const data = ctx.getImageData(x, y, width, height);
+    const canvas =
+      this.outputCanvas ||
+      (this.outputCanvas = document.createElement("canvas"));
+    canvas.width = width;
+    canvas.height = height;
+    const c = canvas.getContext("2d");
+    c.putImageData(data, 0, 0);
+    return canvas.toDataURL();
+  };
+
+  // 库本身不打包Promise
+  output = options =>
+    new window.Promise((resolve, reject) => {
+      try {
+        options = { ...outputOptions, ...options };
+        // if (opt.type === 'blob') {
+        // }
+        let data = this.getCropImage();
+        if (options.type === "blob") {
+          data = dataURLtoBlob(data);
+        }
+        options.success(data);
+        resolve(data);
+      } catch (e) {
+        options.fail(e);
+        reject(e);
+      }
+    });
 }
 
 const imgOptions = {
@@ -479,7 +542,7 @@ class ImageModel extends EmitAble {
       width: width * scale,
       height: height * scale
     });
-    console.log(newWidth, width * scale, width);
+    // console.log(newWidth, width * scale, width);
 
     // 将外部坐标转换为内部坐标
     const origin = { x: x - this.x, y: y - this.y };
@@ -532,7 +595,7 @@ class Limiter extends EmitAble {
     this.y = props.y * props.devicePixelRatio;
     this.width = props.width * props.devicePixelRatio;
     this.height = props.height * props.devicePixelRatio;
-    console.log(props.width, props.devicePixelRatio);
+    // console.log(props.width, props.devicePixelRatio);
   }
 
   // 动态BoundingRect
@@ -578,7 +641,7 @@ class Limiter extends EmitAble {
     let w = limit(width, maxWidth)(size.width);
     let h = limit(height, maxHeight)(size.height);
 
-    console.log(size.width, w, width, height, maxWidth);
+    // console.log(size.width, w, width, height, maxWidth);
     // 进入受限范围,按比例重新计算尺寸
     if (ratio !== (w / h).toFixed(4)) {
       w = h * ratio;

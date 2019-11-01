@@ -10,13 +10,30 @@
     <style>
       body {
         padding: 50px 20px 50px;
+        user-select: none;
       }
 
-      div {
-        width: fit-content;
+      section {
+        border-radius: 4px;
         background-color: #fff;
         box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        margin: 0 auto;
+        margin: 0 auto 50px;
+      }
+
+      section h3 {
+        width: 100%;
+        margin: 0;
+        background-color: #f7f7f7;
+      }
+
+      section > div {
+        display: flex;
+        flex-wrap: wrap;
+        padding: 15px;
+      }
+
+      section > div > div {
+        margin-right: 10px;
       }
     </style>
     <style></style>
