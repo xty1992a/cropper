@@ -18,31 +18,31 @@ const elList = [
       width: 200,
       height: 200
     }
+  },
+  {
+    width: 300,
+    height: 375,
+    url: "static/field.jpg",
+    minRate: 0.1,
+    cropMode: "free-window",
+    window: {
+      width: 200,
+      height: 275
+    }
+  },
+  {
+    width: 300,
+    height: 375,
+    devicePixelRatio: 2,
+    url: "static/geralt_of_rivia.jpg",
+    cropMode: "cover"
+  },
+  {
+    width: 300,
+    height: 375,
+    url: "static/geralt_of_rivia.jpg",
+    cropMode: "contain"
   }
-  /* {
-	 width: 300,
-	 height: 375,
-	 url: "static/field.jpg",
-	 minRate: 0.1,
-	 cropMode: "free-window",
-	 window: {
-	   width: 200,
-	   height: 275
-	 }
-   },
-   {
-	 width: 300,
-	 height: 375,
-	 devicePixelRatio: 2,
-	 url: "static/geralt_of_rivia.jpg",
-	 cropMode: "cover"
-   },
-   {
-	 width: 300,
-	 height: 375,
-	 url: "static/geralt_of_rivia.jpg",
-	 cropMode: "contain"
-   }*/
 ];
 
 function preview(opt, index) {
@@ -105,6 +105,9 @@ function main() {
     el.appendChild(outputEl);
     btn.addEventListener("click", output);
     crop.on("ready", output);
+    crop.on("ready", () => {
+      console.log("second ready");
+    });
     crop.on("change", e => {
       sync(e);
       // output();

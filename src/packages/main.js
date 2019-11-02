@@ -6,7 +6,7 @@ import {
   listen,
   listenWheel,
   renderBg
-} from "./utils";
+} from "./utils.ts";
 
 const dftOptions = {
   url: "", // 截图链接
@@ -256,11 +256,11 @@ export default class Cropper extends EmitAble {
 
   listenEvents() {
     const el = this.$canvas;
-    listenWheel(el, this.mouseWheel);
-    listen(el, "mousedown", this.down);
-    listen(el, "mousemove", this.move);
-    listen(el, "mouseup", this.up);
-    listen(el, "mouseleave", this.up);
+    listenWheel(el, this.onMouseWheel);
+    listen(el, "mousedown", this.onDown);
+    listen(el, "mousemove", this.onMove);
+    listen(el, "mouseup", this.onUp);
+    listen(el, "mouseleave", this.onUp);
   }
 
   hitResizeRect(point) {
@@ -270,7 +270,7 @@ export default class Cropper extends EmitAble {
   }
 
   // region DOM事件
-  down = e => {
+  onDown = e => {
     if (!this.model) return;
     this.isDown = true;
     const point = e.touches ? e.touches[0] : e;
@@ -296,7 +296,7 @@ export default class Cropper extends EmitAble {
     this.position.endY = model.y;
   };
 
-  move = e => {
+  onMove = e => {
     const { clientX, clientY } = e.touches ? e.touches[0] : e;
     const resizeRect =
       this.hitResizeRect(this.getEventPoint({ clientX, clientY })) ||
@@ -336,14 +336,14 @@ export default class Cropper extends EmitAble {
     this.render();
   };
 
-  up = () => {
+  onUp = () => {
     if (!this.model) return;
     if (!this.isDown) return;
     this.resizeRect = null;
     this.isDown = false;
   };
 
-  mouseWheel = e => {
+  onMouseWheel = e => {
     e.preventDefault();
     const delta = limit(-1, 1)(e.wheelDelta || -e.deltaY || -e.detail);
     const { x, y } = this.getEventPoint(e);
