@@ -1,6 +1,7 @@
 // 未编译API,需要引入polyfill
 import "core-js";
-import Cropper from "./packages/main";
+// import Cropper from "./packages/main";
+import Cropper from "./core/cropper";
 import { debounce } from "./packages/utils";
 
 const elList = [
@@ -9,8 +10,8 @@ const elList = [
     height: 375,
     url: "static/field.jpg",
     cropMode: "window",
-    devicePixelRatio: 3,
     minRate: 0.1,
+    wheelSpeed: 0.01,
     // windowMoveable: false,
     window: {
       x: 50,
@@ -18,31 +19,31 @@ const elList = [
       width: 200,
       height: 200
     }
-  },
-  {
-    width: 300,
-    height: 375,
-    url: "static/field.jpg",
-    minRate: 0.1,
-    cropMode: "free-window",
-    window: {
-      width: 200,
-      height: 275
-    }
-  },
-  {
-    width: 300,
-    height: 375,
-    devicePixelRatio: 2,
-    url: "static/geralt_of_rivia.jpg",
-    cropMode: "cover"
-  },
-  {
-    width: 300,
-    height: 375,
-    url: "static/geralt_of_rivia.jpg",
-    cropMode: "contain"
   }
+  /* {
+     width: 300,
+     height: 375,
+     url: "static/field.jpg",
+     minRate: 0.1,
+     cropMode: "free-window",
+     window: {
+       width: 200,
+       height: 275
+     }
+   },
+   {
+     width: 300,
+     height: 375,
+     devicePixelRatio: 2,
+     url: "static/geralt_of_rivia.jpg",
+     cropMode: "cover"
+   },
+   {
+     width: 300,
+     height: 375,
+     url: "static/geralt_of_rivia.jpg",
+     cropMode: "contain"
+   }*/
 ];
 
 function preview(opt, index) {
@@ -120,8 +121,8 @@ function main() {
 }
 
 main();
-/*
 
+/*
 const el = document.getElementById("app");
 
 const crop = new Cropper(el, {
@@ -131,4 +132,5 @@ const crop = new Cropper(el, {
   // devicePixelRatio: 1
 });
 
-console.log(crop);*/
+console.log(crop);
+*/

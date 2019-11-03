@@ -191,14 +191,7 @@ export default class Cropper extends EmitAble {
     this.window.model = this.limiter.model = this.model;
 
     console.log(this.window);
-    if (MODE === "contain") {
-      this.model.on("change", model => {
-        this.limiter.x = model.x;
-        this.limiter.y = model.y;
-        this.limiter.width = model.width;
-        this.limiter.height = model.height;
-      });
-    }
+
     // window模式,限制框与截图框同步
     if (MODE === "window") {
       this.window.on("change", changes => {
@@ -774,6 +767,7 @@ class Limiter extends EmitAble {
     this.y = limit(minY, maxY)(y);
 
     this.fire("change", { x: this.x, y: this.y });
+    // this.fire("change", {x: this.x, y: this.y, width: this.width, height: this.height});
   }
 
   resize({ x, y }, { index, parentHeight, parentWidth, parentX, parentY }) {
