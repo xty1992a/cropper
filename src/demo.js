@@ -1,7 +1,7 @@
 // 未编译API,需要引入polyfill
 import "core-js";
-// import Cropper from "./packages/main";
-import Cropper from "./core/cropper";
+import Cropper from "./packages/main";
+// import Cropper from "./core/cropper";
 import { debounce } from "./packages/utils";
 
 const list = (window.cropList = []);
@@ -13,7 +13,7 @@ const elList = [
     url: "static/field.jpg",
     cropMode: "window",
     minRate: 0.1,
-    devicePixelRatio: 3,
+    // devicePixelRatio: 3,
     // wheelSpeed: 0.01,
     // windowMoveable: false,
     window: {
@@ -52,17 +52,22 @@ const elList = [
 
 function preview(opt, index) {
   const div = document.createElement("div");
+  const wrap = document.createElement("div");
+  const h3 = document.createElement("h3");
+  h3.innerText = "实时预览";
   const img = new Image();
   img.id = "preview" + index;
   img.src = opt.url;
   const rect = opt.window ? opt.window : opt;
-  div.style.cssText = `width: ${rect.width}px;height: ${rect.height}px;overflow:hidden;display:inline-block;`;
-  div.appendChild(img);
+  wrap.style.cssText = `width: ${rect.width}px;height: ${rect.height}px;overflow:hidden;display:inline-block;`;
+  wrap.appendChild(img);
+  div.appendChild(wrap);
+  div.appendChild(h3);
 
   return {
     div,
     sync(e) {
-      div.style.cssText = `width: ${e.window.width}px;height: ${e.window.height}px;overflow:hidden;display:inline-block;`;
+      wrap.style.cssText = `width: ${e.window.width}px;height: ${e.window.height}px;overflow:hidden;display:inline-block;`;
       img.style.cssText = `width: ${e.model.width}px;height: ${e.model.height}px;transform: translate3d(${e.window.x}px,${e.window.y}px,0)`;
     }
   };
@@ -72,13 +77,16 @@ function main() {
   const frag = document.createDocumentFragment();
   elList.forEach((opt, index) => {
     const section = document.createElement("section");
+    section.innerHTML = `<h3 style="padding: 10px;">截图模式: ${opt.cropMode}</h3>`;
     const el = document.createElement("div");
     const wrap = document.createElement("div");
-    el.innerHTML = `<h3 style="padding: 10px;">截图模式: ${opt.cropMode}</h3>`;
     const btn = document.createElement("btn");
     btn.innerText = "crop";
 
     const outputEl = document.createElement("div");
+    const h3 = document.createElement("h3");
+    h3.innerText = "截图输出";
+    outputEl.appendChild(h3);
     const { div, sync } = preview(opt, index);
 
     outputEl.style.cssText = div.style.cssText;
@@ -88,9 +96,12 @@ function main() {
         success(data) {
           console.log("output success");
           const img = outputEl.querySelector("#output" + index) || new Image();
-          if (e && img.parentNode) {
-            img.parentNode.style.width = e.window.width + "px";
-            img.parentNode.style.height = e.window.height + "px";
+          if (e) {
+            outputEl.style.width = e.window.width + "px";
+            outputEl.style.height = e.window.height + "px";
+          } else {
+            outputEl.style.width = opt.window.width + "px";
+            outputEl.style.height = opt.window.height + "px";
           }
           img.style.cssText = "width:100%;";
           img.id = img.id || "output" + index;
@@ -101,7 +112,7 @@ function main() {
             data = URL.createObjectURL(data);
           }
           img.src = data;
-          outputEl.appendChild(img);
+          outputEl.insertBefore(img, h3);
         },
         fail(e) {
           console.log("something error", e);

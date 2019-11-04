@@ -400,19 +400,15 @@ export default class Cropper extends EmitAble {
         // 派发事件到外部,数据是model的尺寸以及与相对于截图框的位移
         const dpr = this.$options.devicePixelRatio;
         this.fire("change", {
-          /*		  x: (this.model.x - this.window.x) / this.$options.devicePixelRatio,
-					y: (this.model.y - this.window.y) / this.$options.devicePixelRatio,
-					height: this.model.height / this.$options.devicePixelRatio,
-					width: this.model.width / this.$options.devicePixelRatio*/
           window: {
-            x: (this.model.x - this.window.x) * dpr,
-            y: (this.model.y - this.window.y) * dpr,
-            width: this.window.width * dpr,
-            height: this.window.height * dpr
+            x: (this.model.x - this.window.x) / dpr,
+            y: (this.model.y - this.window.y) / dpr,
+            width: this.window.width / dpr,
+            height: this.window.height / dpr
           },
           model: {
-            height: this.model.height * dpr,
-            width: this.model.width * dpr
+            height: this.model.height / dpr,
+            width: this.model.width / dpr
           }
         });
       });
@@ -588,6 +584,12 @@ class ImageModel extends EmitAble {
     const deltaX = origin.x - (origin.x / this.width) * newWidth;
     const deltaY = origin.y - (origin.y / this.height) * newHeight;
     // endregion
+    this.width = newWidth;
+    this.height = newHeight;
+    this.fire("change", {
+      width: this.width,
+      height: this.height
+    });
     const position = this.limiter.limitPosition({
       x: this.x + deltaX,
       y: this.y + deltaY,
@@ -597,15 +599,11 @@ class ImageModel extends EmitAble {
 
     // 尺寸被限制之后,与入参scale脱钩,这里重新计算scale
     this.scale = newHeight / height;
-    this.width = newWidth;
-    this.height = newHeight;
     this.x = position.x;
     this.y = position.y;
     this.fire("change", {
       x: this.x,
-      y: this.y,
-      width: this.width,
-      height: this.height
+      y: this.y
     });
   }
 
