@@ -1,13 +1,17 @@
-import { limit, Rect } from "../packages/utils";
-import store from "./store";
+import { limit, Rect } from "../helpers/utils";
 import Store from "../helpers/store";
 
-type Props = {
+type LimiterProps = {
   free: boolean;
   isLimitInRect: boolean;
   keepRatio: boolean;
   maxHeight: number;
   maxWidth: number;
+  x: number;
+  y: number;
+  height: number;
+  width: number;
+  store: Store;
 };
 
 type anyObj = {
@@ -25,6 +29,8 @@ export default class Limiter {
   maxHeight: number;
   $store: Store;
   $options: anyObj;
+  model: anyObj;
+  window: anyObj;
   FREE: boolean;
   isLimitInRect: boolean;
   keepRatio: boolean;
@@ -53,25 +59,26 @@ export default class Limiter {
       return this.height * this.$options.maxRate;
     }*/
 
-  constructor(props: Props) {
-    this.$store = store;
+  constructor(props: LimiterProps) {
+    this.$store = props.store;
     this.mapStore();
     this.FREE = props.free;
+    this.x = props.x;
+    this.y = props.y;
+    this.width = props.width;
+    this.height = props.height;
     this.keepRatio = props.keepRatio;
     this.maxWidth = props.maxWidth;
     this.maxHeight = props.maxHeight;
     this.isLimitInRect = props.isLimitInRect;
   }
 
-  limitSize(
-    size: { x: number; y: number; width: number; height: number },
-    keepRatio: boolean = true
-  ) {
+  limitSize(size: { width: number; height: number }) {
     const { width, height, maxHeight, maxWidth, FREE } = this;
     let w = limit(width, maxHeight)(size.width);
     let h = limit(height, maxWidth)(size.height);
 
-    if (keepRatio) {
+    if (this.keepRatio) {
       const ratio = +(size.width / size.height).toFixed(4);
       const imgRatio = +(w / h).toFixed(4);
       if (ratio !== imgRatio) {
@@ -90,10 +97,18 @@ export default class Limiter {
 
   limitPosition(rect: { x: number; y: number }) {
     const { width, height, x, y, FREE } = this;
-    return {
-      x: FREE ? rect.x : limit(width - this.modelWidth + x, x)(rect.x),
-      y: FREE ? rect.y : limit(y - this.modelHeight + height, y)(rect.y)
-    };
+    if (FREE) return rect;
+    if (this.isLimitInRect) {
+      return {
+        x: limit(x - (this.model.width - width), x)(rect.x),
+        y: limit(y - (this.model.height - height), y)(rect.y)
+      };
+    } else {
+      return {
+        x: limit(x, width - this.window.width + x)(rect.x),
+        y: limit(y, height - this.window.height + y)(rect.y)
+      };
+    }
   }
 
   // 抽象的限制坐标方法
@@ -135,7 +150,9 @@ export default class Limiter {
     this.$store.mapGetters(["modelWidth", "modelHeight", "dpr"]).call(this);
     this.$store
       .mapState({
-        $options: "options"
+        $options: "options",
+        model: "model",
+        window: "window"
       })
       .call(this);
   }

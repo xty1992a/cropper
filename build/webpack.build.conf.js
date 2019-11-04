@@ -14,7 +14,8 @@ const workspace = root(".");
 module.exports = () =>
   merge(base({ root, workspace }), {
     mode: "production",
-    entry: root("src/packages/main.js"),
+    // entry: root("src/packages/main.js"),
+    entry: root("src/core/cropper.ts"),
     output: {
       path: path.resolve(__dirname, "../lib"),
       filename: "cropper.js",

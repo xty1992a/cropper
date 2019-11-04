@@ -1,5 +1,7 @@
+import "../helpers/polyfill";
 import store from "./store";
 import Store from "../helpers/store";
+
 import {
   EmitAble,
   isHit,
@@ -7,21 +9,49 @@ import {
   listenWheel,
   renderBg
 } from "../helpers/utils";
-import { limit } from "../packages/utils";
+import { dataURLtoBlob, limit } from "../packages/utils";
+import ImageModel from "./image-model";
+import WindowModel, { ResizeRect } from "./window-model";
+
+type WindowProp = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  moveable?: boolean;
+  resizeable?: boolean;
+  free?: boolean;
+  resizeSize?: number;
+};
 
 type Props = {
   url: string;
   width: number;
   height: number;
-  window?: object;
+  window?: WindowProp;
   wheelSpeed?: number;
   maxRate?: number;
   minRate?: number;
   cropMode?: string;
   maskColor?: string;
-  windowResizable?: true;
-  windowMoveable?: true;
+  resizeSize?: number;
   devicePixelRatio?: number;
+};
+
+type OutputType = {
+  mime?: string;
+  type?: string;
+  quality?: number;
+  success?: Function;
+  fail?: Function;
+};
+
+const outputOptions: OutputType = {
+  mime: "image/png",
+  type: "base64",
+  quality: 1,
+  success: () => {},
+  fail: () => {}
 };
 
 const dftOptions: Props = {
@@ -32,10 +62,9 @@ const dftOptions: Props = {
   wheelSpeed: 0.05, // 放大步长
   maxRate: 10, // 图片最大放大倍数
   minRate: 0.5, // 图片最小缩小倍数
+  resizeSize: 8,
   cropMode: "cover", //  截图模式,cover表示不留白边拖动时也无法拖出
   maskColor: "rgba(0,0,0,0.6)", // 蒙层颜色
-  windowResizable: true,
-  windowMoveable: true,
   devicePixelRatio: window.devicePixelRatio || 1 // dpr
 };
 
@@ -53,34 +82,70 @@ export default class Cropper extends EmitAble {
   $options: Props;
   position: EventPoint;
   $canvas: HTMLCanvasElement;
+  outputCanvas: HTMLCanvasElement;
   $el: HTMLElement;
   wrapBoundingRect: { x: number; y: number };
   isHitWindow: boolean;
   isDown: boolean;
-  hitTarget: any; // windowModel|ImageModel|resizeRect
-  window: any; // windowModel
-  model: any; // ImageModel
+  hitTarget: WindowModel | ImageModel | ResizeRect;
+  window: WindowModel;
+  model: ImageModel;
   HEIGHT: number;
   dpr: number;
   WIDTH: number;
   ctx: CanvasRenderingContext2D;
   positionTimer: number;
-
-  // [prop: string]: any
+  MODE: "window" | "free-window" | "cover" | "contain";
 
   constructor(el: HTMLElement | string, options: Props) {
     super();
-    this.handlerStore({ ...dftOptions, ...options });
-    this.handlerDOM(el);
+    this.init(el, { ...dftOptions, ...options });
   }
 
   // region 计算属性
-  // 根据hitTarget来决定
-  get cursor() {
-    return "";
+  //endregion
+
+  // region init
+  init(el: HTMLElement | string, options: Props) {
+    let window = Cropper.fmtWindow(options);
+    this.handlerStore({ ...options, window });
+    this.handlerDOM(el);
+    this.handlerEvents();
+    this.createModel(() => {
+      this.createWindow();
+      this.render();
+      console.log(this);
+    });
   }
 
-  //endregion
+  // 整理window
+  static fmtWindow({ window, width, height, cropMode }: Props) {
+    if (window) {
+      window = { ...window };
+      window.x = limit(0, width)(window.x || 0);
+      window.y = limit(0, height)(window.y || 0);
+      window.width = limit(0, width - window.x)(window.width);
+      window.height = limit(0, height - window.y)(window.height);
+    } else {
+      window = {
+        x: 0,
+        y: 0,
+        width,
+        height,
+        moveable: true,
+        resizeable: true
+      };
+    }
+    window.moveable =
+      window.moveable && ["window", "free-window"].includes(cropMode);
+    window.resizeable =
+      window.moveable && ["window", "free-window"].includes(cropMode);
+    window.free = window.free && ["free-window"].includes(cropMode);
+    window.resizeSize = window.resizeSize || 5;
+    return window;
+  }
+
+  // endregion
 
   // region DOM相关
 
@@ -125,6 +190,7 @@ export default class Cropper extends EmitAble {
     listen(el, "mouseleave", this.onUp);
   }
 
+  // region DOM事件
   onDown = (e: MouseEvent & TouchEvent) => {
     if (!this.model) return;
     this.isDown = true;
@@ -134,68 +200,41 @@ export default class Cropper extends EmitAble {
     this.position.startX = point.clientX;
     this.position.startY = point.clientY;
 
-    const resizeRect = /*(this.resizeRect = */ this.hitResizeRect({ x, y }); //);
-    // this.resizeRect && (this.resizeRect = {...this.resizeRect});
-
+    const resizeRect = this.hitResizeRect({ x, y });
+    console.log(resizeRect);
     if (resizeRect) {
       this.hitTarget = resizeRect;
-      // this.position.endX = resizeRect.x + resizeRect.size / 2;
-      // this.position.endY = resizeRect.y + resizeRect.size / 2;
-      return;
+    } else {
+      const hitWindow = isHit({ x, y }, this.window.rect);
+
+      console.log(hitWindow, "hitWindow");
+      if (hitWindow && this.window.moveable) {
+        this.hitTarget = this.window;
+      } else {
+        this.hitTarget = this.model;
+      }
     }
-
-    const hitWindow = isHit({ x, y }, this.window.rect);
-
-    if (hitWindow && this.window.moveable) {
-      this.hitTarget = this.window;
-      return;
-    }
-
-    this.hitTarget = this.model;
-
-    // this.position.endX = model.x;
-    // this.position.endY = model.y;
+    this.hitTarget.start();
   };
   onMove = (e: MouseEvent & TouchEvent) => {
+    this.handlerCursor(e);
     if (!this.model) return;
     if (!this.isDown) return;
+    if (!this.hitTarget) return;
     const { clientX, clientY } = e.touches ? e.touches[0] : e;
     const {
-      position: { startX, startY },
-      dpr
+      position: { startX, startY }
     } = this;
     const deltaX = clientX - startX; //* dpr;
     const deltaY = clientY - startY; //* dpr;
-
-    this.hitTarget.move({ deltaX, deltaY });
-    /*
-        this.window.modelX = this.limiter.modelX = this.model.x;
-        this.window.modelY = this.limiter.modelY = this.model;
-        if (!this.resizeRect) {
-          if (this.isHitWindow && this.window.moveable) {
-            model = this.window;
-          }
-
-          model.move({
-            x: endX + deltaX,
-            y: endY + deltaY
-          });
-        } else {
-          this.window.resize(
-            {
-              x: endX + deltaX,
-              y: endY + deltaY
-            },
-            this.resizeRect
-          );
-        }
-        this.render();
-    */
+    this.hitTarget.move({ x: deltaX, y: deltaY });
+    this.render();
   };
   onUp = (e: MouseEvent) => {
     if (!this.model) return;
     if (!this.isDown) return;
     this.isDown = false;
+    this.$canvas.style.cursor = "";
   };
   onMouseWheel = (e: WheelEvent) => {
     e.preventDefault();
@@ -206,6 +245,21 @@ export default class Cropper extends EmitAble {
     const scale = +limitFn(this.model.scale + step).toFixed(2);
     this.zoom({ x, y }, scale);
   };
+
+  handlerCursor(e: TouchEvent & MouseEvent) {
+    if (!this.window) return;
+    const { clientX, clientY } = e.touches ? e.touches[0] : e;
+    const resizeRect = this.hitResizeRect(
+      this.getEventPoint({ clientX, clientY })
+    );
+    this.$canvas.style.cursor = resizeRect ? resizeRect.cursor : "";
+  }
+
+  // endregion
+
+  // endregion
+
+  // region helpers
 
   getEventPoint({ clientX, clientY }: { clientX: number; clientY: number }) {
     // 节流慢操作
@@ -227,7 +281,7 @@ export default class Cropper extends EmitAble {
   }
 
   hitResizeRect(point: { x: number; y: number }) {
-    if (!this.window.resizable) return null;
+    if (!this.window.resizeable) return null;
     const { resizeRect } = this.window;
     return resizeRect.find((it: any) => isHit(point, it)) || null;
   }
@@ -235,23 +289,130 @@ export default class Cropper extends EmitAble {
   // endregion
 
   // region 子组件相关
+  // 计算图片初始位置
+  computeModelOptions({ width, height }: { width: number; height: number }) {
+    const {
+      MODE,
+      dpr,
+      $options: { width: WIDTH, height: HEIGHT }
+    } = this;
+    // js计算有误差,简单取整
+    const imgRatio = +(width / height).toFixed(4);
+    const RATIO = +(WIDTH / HEIGHT).toFixed(4);
+    // 占满容器
+    let result: { x: number; y: number; width: number; height: number } = {
+      x: 0,
+      y: 0,
+      width: WIDTH,
+      height: HEIGHT
+    };
 
-  createModel() {
-    this.model = new ImageModel({});
+    // 高度与容器相等
+    const fill_height = {
+      width: HEIGHT * imgRatio,
+      height: HEIGHT,
+      x: (WIDTH - HEIGHT * imgRatio) / 2,
+      y: 0
+    };
+
+    // 宽度与容器相等
+    const fill_width = {
+      width: WIDTH,
+      height: WIDTH / imgRatio,
+      y: (HEIGHT - WIDTH / imgRatio) / 2,
+      x: 0
+    };
+
+    // 当图片比例与容器不一致时，按照合适的方式布局图片
+    if (RATIO !== imgRatio) {
+      // 容器宽度不足,顶住高度
+      if (RATIO < imgRatio) {
+        result = fill_height;
+      }
+      // 容器高度不足,顶住宽度
+      else {
+        result = fill_width;
+      }
+    }
+
+    // contain模式应该顶住短边,正好反转
+    if (["contain"].includes(MODE)) {
+      result =
+        result === fill_height
+          ? fill_width
+          : result === fill_width
+          ? fill_height
+          : result;
+    }
+    return result;
+  }
+
+  createModel(cb: Function) {
+    const {
+      $options: { url }
+    } = this;
+    ImageModel.loadImage(url, img => {
+      const options = {
+        img,
+        x: 0,
+        y: 0,
+        scale: 1,
+        ...this.computeModelOptions(img),
+        moveable: true,
+        resizeable: true,
+        store: this.$store,
+        free: true
+      };
+      this.model = new ImageModel(options);
+      cb && cb();
+    });
+  }
+
+  createWindow() {
+    const {
+      MODE,
+      $options: { width, height, window: options }
+    } = this;
+    switch (MODE) {
+      case "cover":
+        options.x = options.y = 0;
+        options.width = width;
+        options.height = height;
+        options.resizeable = false;
+        options.moveable = false;
+        break;
+      case "contain":
+        options.x = options.y = 0;
+        options.width = width;
+        options.resizeable = false;
+        options.moveable = false;
+        // windowOptions.height = height;
+        // limiterOptions.free = true;
+        break;
+      case "window":
+        options.resizeable = true;
+        options.moveable = true;
+        break;
+      case "free-window":
+        options.resizeable = true;
+        options.moveable = true;
+        /*        limiterOptions.x = limiterOptions.y = 0;
+                limiterOptions.width = width;
+                limiterOptions.height = height;
+                limiterOptions.free = true;*/
+        options.free = true;
+        break;
+    }
+    this.window = new WindowModel({
+      ...options,
+      resizeSize: this.$options.resizeSize,
+      store: this.$store
+    });
   }
 
   zoom(point: { x: number; y: number }, scale: number) {
-    // console.log("[mouse zoom on] ", position, scale, delta);
     this.model.zoom(point, scale);
-    /*   console.log(
-         "scale [%s], width [%s], height [%s], x [%s], y [%s]",
-         scale,
-         this.model.width,
-         this.model.height,
-         this.model.x,
-         this.model.y
-       );*/
-    // this.render();
+    this.render();
   }
 
   // endregion
@@ -259,7 +420,7 @@ export default class Cropper extends EmitAble {
   // region store 相关
 
   handlerStore(opt: object) {
-    this.$store = store;
+    this.$store = new Store(store);
     this.initStore(opt);
     this.mapStore();
   }
@@ -269,7 +430,7 @@ export default class Cropper extends EmitAble {
   }
 
   mapStore() {
-    this.$store.mapGetters(["HEIGHT", "WIDTH", "dpr"]).call(this);
+    this.$store.mapGetters(["HEIGHT", "WIDTH", "dpr", "MODE"]).call(this);
     this.$store.mapState(["options"]).call(this);
     this.$store
       .mapState({
@@ -294,12 +455,18 @@ export default class Cropper extends EmitAble {
       ctx.restore();
       setTimeout(() => {
         // 派发事件到外部,数据是model的尺寸以及与相对于截图框的位移
-        /*        this.fire("change", {
-                  x: (this.model.x - this.window.x) / this.$options.devicePixelRatio,
-                  y: (this.model.y - this.window.y) / this.$options.devicePixelRatio,
-                  height: this.model.height / this.$options.devicePixelRatio,
-                  width: this.model.width / this.$options.devicePixelRatio
-                });*/
+        this.fire("change", {
+          window: {
+            x: this.model.x - this.window.x,
+            y: this.model.y - this.window.y,
+            width: this.window.width,
+            height: this.window.height
+          },
+          model: {
+            height: this.model.height,
+            width: this.model.width
+          }
+        });
       });
     });
   }
@@ -307,7 +474,10 @@ export default class Cropper extends EmitAble {
   // 绘制图像
   // 在此前需要更新model的属性
   renderModel() {
-    const { x, y, width, dpr, height, img } = this.model;
+    const {
+      dpr,
+      model: { x, y, width, height, img }
+    } = this;
     if (!img) return;
     const { ctx } = this;
     ctx.drawImage(img, x * dpr, y * dpr, width * dpr, height * dpr);
@@ -321,10 +491,9 @@ export default class Cropper extends EmitAble {
       HEIGHT,
       dpr,
       $options: { maskColor },
-      window: { x, y, height, width, resizable, resizeRect, rect, splitLine }
+      window: { x, y, height, width, resizeable, resizeRect, rect, splitLine }
     } = this;
 
-    // console.log(' window : %s %s \n limiter: %s %s', this.window.x, this.window.y, this.limiter.x, this.limiter.y);
     ctx.save();
     ctx.fillStyle = maskColor;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -332,7 +501,7 @@ export default class Cropper extends EmitAble {
     ctx.fillStyle = "#000";
     ctx.fillRect(x * dpr, y * dpr, width * dpr, height * dpr);
     ctx.restore();
-    if (resizable) {
+    if (resizeable) {
       ctx.save();
       ctx.fillStyle = "#39f";
       ctx.lineWidth = dpr;
@@ -351,17 +520,73 @@ export default class Cropper extends EmitAble {
 
       splitLine.forEach((list: { x: number; y: number }[]) => {
         ctx.beginPath();
-        ctx.moveTo(list[0].x, list[0].y);
-        ctx.lineTo(list[1].x, list[1].y);
+        ctx.moveTo(list[0].x * dpr, list[0].y * dpr);
+        ctx.lineTo(list[1].x * dpr, list[1].y * dpr);
         ctx.stroke();
       });
       ctx.restore();
-      resizeRect.forEach((rect: { [prop: string]: number }) => {
-        ctx.fillRect(rect.x, rect.y, rect.size, rect.size);
+      resizeRect.forEach(rect => {
+        ctx.fillRect(
+          rect.x * dpr,
+          rect.y * dpr,
+          rect.width * dpr,
+          rect.height * dpr
+        );
       });
       ctx.restore();
     }
   }
 
+  // endregion
+
+  // region API
+  getCropImage = ({
+    mime,
+    quality
+  }: {
+    mime: string;
+    quality: number;
+  }): string => {
+    const {
+      model,
+      window: { x, y, width, height }
+    } = this;
+    const canvas =
+      this.outputCanvas ||
+      (this.outputCanvas = document.createElement("canvas"));
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(
+      model.img,
+      model.x - x,
+      model.y - y,
+      model.width,
+      model.height
+    );
+    return canvas.toDataURL(mime, quality);
+  };
+
+  // 库本身不打包Promise
+  output = (options: OutputType) => {
+    // @ts-ignore
+    return new window.Promise((resolve, reject) => {
+      try {
+        options = { ...outputOptions, ...options };
+        let data: any = this.getCropImage({
+          mime: options.mime,
+          quality: options.quality
+        });
+        if (options.type === "blob") {
+          data = dataURLtoBlob(data);
+        }
+        options.success && options.success(data);
+        resolve(data);
+      } catch (e) {
+        options.fail && options.fail(e);
+        reject(e);
+      }
+    });
+  };
   // endregion
 }

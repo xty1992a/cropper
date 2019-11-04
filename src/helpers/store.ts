@@ -1,3 +1,5 @@
+import { EmitAble, copy } from "./utils";
+
 type State = {
   [prop: string]: any;
 };
@@ -24,7 +26,7 @@ interface Props {
   getters?: GetMap;
 }
 
-export default class Store {
+export default class Store extends EmitAble {
   state: State;
   getters: State;
   protected mutationByCommit: boolean;
@@ -33,7 +35,8 @@ export default class Store {
   protected __getters__: GetMap;
 
   constructor(props: Props) {
-    this.__state__ = props.state;
+    super();
+    this.__state__ = copy(props.state);
     this.__mutations__ = props.mutations;
     props.getters && (this.__getters__ = props.getters);
     this.defineState();
@@ -52,6 +55,7 @@ export default class Store {
           if (!self.mutationByCommit) throw new Error("请通过commit提交变更！");
           self.__state__[key] = v;
           self.mutationByCommit = false;
+          self.fire("mutation_" + key);
         },
         enumerable: true
       });
@@ -76,21 +80,21 @@ export default class Store {
 
   commit(mutationType: string, value: any) {
     this.mutationByCommit = true;
-    this.__mutations__[mutationType].call(this, this.__state__, value);
+    this.__mutations__[mutationType].call(this, this.state, value);
   }
 
   protected mapStore(props: MapProps, target: State) {
-    let maps: [string, string][];
+    let maps: { key: string; value: string }[];
     if (Array.isArray(props)) {
-      maps = props.map(prop => [prop, prop]);
+      maps = props.map(prop => ({ key: prop, value: prop }));
     } else {
-      maps = Object.keys(props).map(key => [key, props[key]]);
+      maps = Object.keys(props).map(key => ({ key, value: props[key] }));
     }
     return function() {
       maps.forEach(map => {
-        Object.defineProperty(this, map[0], {
+        Object.defineProperty(this, map.key, {
           get() {
-            return target[map[1]];
+            return target[map.value];
           },
           set(v) {},
           enumerable: true

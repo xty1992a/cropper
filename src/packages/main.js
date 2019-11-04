@@ -184,9 +184,9 @@ export default class Cropper extends EmitAble {
     this.window = new Limiter(windowOptions);
 
     /*    this.window.modelX = this.limiter.modelX = this.model.x;
-        this.window.modelY = this.limiter.modelY = this.model.y;
-        this.window.modelWidth = this.limiter.modelWidth = this.model.width;
-        this.window.modelHeight = this.limiter.modelHeight = this.model.height;*/
+		this.window.modelY = this.limiter.modelY = this.model.y;
+		this.window.modelWidth = this.limiter.modelWidth = this.model.width;
+		this.window.modelHeight = this.limiter.modelHeight = this.model.height;*/
 
     this.window.model = this.limiter.model = this.model;
 
@@ -398,11 +398,22 @@ export default class Cropper extends EmitAble {
       ctx.restore();
       setTimeout(() => {
         // 派发事件到外部,数据是model的尺寸以及与相对于截图框的位移
+        const dpr = this.$options.devicePixelRatio;
         this.fire("change", {
-          x: (this.model.x - this.window.x) / this.$options.devicePixelRatio,
-          y: (this.model.y - this.window.y) / this.$options.devicePixelRatio,
-          height: this.model.height / this.$options.devicePixelRatio,
-          width: this.model.width / this.$options.devicePixelRatio
+          /*		  x: (this.model.x - this.window.x) / this.$options.devicePixelRatio,
+					y: (this.model.y - this.window.y) / this.$options.devicePixelRatio,
+					height: this.model.height / this.$options.devicePixelRatio,
+					width: this.model.width / this.$options.devicePixelRatio*/
+          window: {
+            x: (this.model.x - this.window.x) * dpr,
+            y: (this.model.y - this.window.y) * dpr,
+            width: this.window.width * dpr,
+            height: this.window.height * dpr
+          },
+          model: {
+            height: this.model.height * dpr,
+            width: this.model.width * dpr
+          }
         });
       });
     });
@@ -756,13 +767,13 @@ class Limiter extends EmitAble {
     // console.log(width, modelWidth);
     if (!moveable) return;
     /*    const minX = FREE ? 0 : Math.max(0, modelX);
-        const minY = FREE ? 0 : Math.max(0, modelY);
-        const maxX = FREE
-          ? WIDTH - this.width
-          : Math.min(WIDTH - this.width, modelWidth + modelX - this.width);
-        const maxY = FREE
-          ? HEIGHT - this.height
-          : Math.min(HEIGHT - this.height, modelHeight + modelY - this.height);*/
+		const minY = FREE ? 0 : Math.max(0, modelY);
+		const maxX = FREE
+		  ? WIDTH - this.width
+		  : Math.min(WIDTH - this.width, modelWidth + modelX - this.width);
+		const maxY = FREE
+		  ? HEIGHT - this.height
+		  : Math.min(HEIGHT - this.height, modelHeight + modelY - this.height);*/
     this.x = limit(minX, maxX)(x);
     this.y = limit(minY, maxY)(y);
 
@@ -771,9 +782,6 @@ class Limiter extends EmitAble {
   }
 
   resize({ x, y }, { index, parentHeight, parentWidth, parentX, parentY }) {
-    const {
-      rect: { right, bottom }
-    } = this;
     const limitHeight = limit(0, this.maxHeight);
     const limitWidth = limit(0, this.maxWidth);
     const limitX = limit(this.minX, this.maxX);

@@ -1,7 +1,3 @@
-// @ts-ignore-next-line
-window.requestAnimationFrame =
-  window.requestAnimationFrame || (fn => setTimeout(fn, 16));
-
 interface listener<K extends keyof HTMLElementEventMap> {
   (this: HTMLElement, ev: HTMLElementEventMap[K]): any;
 }
@@ -39,7 +35,7 @@ export const listenWheel = <K extends keyof HTMLElementEventMap>(
     listen(el, event, callback)
   );
 };
-
+export const copy = (o: any) => JSON.parse(JSON.stringify(o));
 type point = {
   x: number;
   y: number;
