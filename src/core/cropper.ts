@@ -1,18 +1,23 @@
 import "../helpers/polyfill";
 import store from "./store";
 import Store from "../helpers/store";
+import { ICropper, OutputType } from "../types/index";
 
 import {
   EmitAble,
   isHit,
   listen,
   listenWheel,
-  renderBg
+  isMobile,
+  renderBg,
+  getDistanceBetween,
+  getCenterBetween
 } from "../helpers/utils";
 import { dataURLtoBlob, limit } from "../packages/utils";
 import ImageModel from "./image-model";
 import WindowModel, { ResizeRect } from "./window-model";
 
+// region types
 type WindowProp = {
   x: number;
   y: number;
@@ -34,18 +39,15 @@ type Props = {
   minRate?: number;
   cropMode?: string;
   maskColor?: string;
-  resizeSize?: number;
   devicePixelRatio?: number;
 };
 
-type OutputType = {
-  mime?: string;
-  type?: string;
-  quality?: number;
-  success?: Function;
-  fail?: Function;
+type Events = {
+  [prop: string]: keyof GlobalEventHandlersEventMap;
 };
+// endregion
 
+// region options&constant
 const outputOptions: OutputType = {
   mime: "image/png",
   type: "base64",
@@ -58,29 +60,27 @@ const dftOptions: Props = {
   url: "", // 截图链接
   width: 600, // 容器尺寸
   height: 375, // 容器尺寸
-  window: null, // 截图框的rect对象截图框被限制在容器内设置超出部分无效
+  window: null, // 截图框的rect对象,截图框被限制在容器内,设置超出容器部分无效
   wheelSpeed: 0.05, // 放大步长
   maxRate: 10, // 图片最大放大倍数
   minRate: 0.5, // 图片最小缩小倍数
-  resizeSize: 8,
-  cropMode: "cover", //  截图模式,cover表示不留白边拖动时也无法拖出
+  cropMode: "cover", //  截图模式,cover表示不留白边,拖动时也无法拖出容器
   maskColor: "rgba(0,0,0,0.6)", // 蒙层颜色
   devicePixelRatio: window.devicePixelRatio || 1 // dpr
 };
 
-type EventPoint = {
-  x: number;
-  y: number;
-  startX: number;
-  startY: number;
-  // endX: number
-  // endY: number
+const EVENTS: Events = {
+  down: isMobile ? "touchstart" : "mousedown",
+  move: isMobile ? "touchmove" : "mousemove",
+  up: isMobile ? "touchend" : "mouseup"
 };
+// endregion
 
-export default class Cropper extends EmitAble {
+export default class Cropper extends EmitAble implements ICropper {
+  // region types
   $store: Store;
   $options: Props;
-  position: EventPoint;
+  position: { startX: number; startY: number; startDistance: number };
   $canvas: HTMLCanvasElement;
   outputCanvas: HTMLCanvasElement;
   $el: HTMLElement;
@@ -96,272 +96,39 @@ export default class Cropper extends EmitAble {
   ctx: CanvasRenderingContext2D;
   positionTimer: number;
   MODE: "window" | "free-window" | "cover" | "contain";
+  zoomOrigin: { x: number; y: number };
+
+  // endregion
 
   constructor(el: HTMLElement | string, options: Props) {
     super();
-    this.init(el, { ...dftOptions, ...options });
+    this.handlerStore({ ...dftOptions, ...options });
+    this.handlerDOM(el);
+    this.handlerChildren();
   }
 
-  // region 计算属性
-  //endregion
+  // region 子组件相关
 
-  // region init
-  init(el: HTMLElement | string, options: Props) {
-    let window = Cropper.fmtWindow(options);
-    this.handlerStore({ ...options, window });
-    this.handlerDOM(el);
-    this.handlerEvents();
+  handlerChildren() {
     this.createModel(() => {
       this.createWindow();
       this.render();
-      console.log(this);
+      this.fire("ready");
     });
-  }
-
-  // 整理window
-  static fmtWindow({ window, width, height, cropMode }: Props) {
-    if (window) {
-      window = { ...window };
-      window.x = limit(0, width)(window.x || 0);
-      window.y = limit(0, height)(window.y || 0);
-      window.width = limit(0, width - window.x)(window.width);
-      window.height = limit(0, height - window.y)(window.height);
-    } else {
-      window = {
-        x: 0,
-        y: 0,
-        width,
-        height,
-        moveable: true,
-        resizeable: true
-      };
-    }
-    window.moveable =
-      window.moveable && ["window", "free-window"].includes(cropMode);
-    window.resizeable =
-      window.moveable && ["window", "free-window"].includes(cropMode);
-    window.free = window.free && ["free-window"].includes(cropMode);
-    window.resizeSize = window.resizeSize || 5;
-    return window;
-  }
-
-  // endregion
-
-  // region DOM相关
-
-  handlerDOM(el: HTMLElement | string) {
-    let dom: HTMLElement;
-    if (!(el instanceof Element)) {
-      dom = document.querySelector(el);
-    } else {
-      dom = el;
-    }
-    if (!(dom instanceof Element)) throw new Error("el not exist!");
-    this.$el = dom;
-    this.createCanvas();
-  }
-
-  createCanvas() {
-    const { width, height } = this.$options;
-    const canvas = (this.$canvas = document.createElement("canvas"));
-    const ctx = (this.ctx = canvas.getContext("2d"));
-    canvas.width = this.WIDTH;
-    canvas.height = this.HEIGHT;
-    canvas.style.width = width + "px";
-    canvas.style.height = height + "px";
-    this.$el.appendChild(canvas);
-    renderBg(canvas);
-  }
-
-  handlerEvents() {
-    this.position = {
-      x: 0,
-      y: 0,
-      startX: 0,
-      startY: 0
-      // endX: 0,
-      // endY: 0
-    };
-    const el = this.$canvas;
-    listenWheel(el, this.onMouseWheel);
-    listen(el, "mousedown", this.onDown);
-    listen(el, "mousemove", this.onMove);
-    listen(el, "mouseup", this.onUp);
-    listen(el, "mouseleave", this.onUp);
-  }
-
-  // region DOM事件
-  onDown = (e: MouseEvent & TouchEvent) => {
-    if (!this.model) return;
-    this.isDown = true;
-    const point = e.touches ? e.touches[0] : e;
-
-    const { x, y } = this.getEventPoint(point);
-    this.position.startX = point.clientX;
-    this.position.startY = point.clientY;
-
-    const resizeRect = this.hitResizeRect({ x, y });
-    console.log(resizeRect);
-    if (resizeRect) {
-      this.hitTarget = resizeRect;
-    } else {
-      const hitWindow = isHit({ x, y }, this.window.rect);
-
-      console.log(hitWindow, "hitWindow");
-      if (hitWindow && this.window.moveable) {
-        this.hitTarget = this.window;
-      } else {
-        this.hitTarget = this.model;
-      }
-    }
-    this.hitTarget.start();
-  };
-  onMove = (e: MouseEvent & TouchEvent) => {
-    this.handlerCursor(e);
-    if (!this.model) return;
-    if (!this.isDown) return;
-    if (!this.hitTarget) return;
-    const { clientX, clientY } = e.touches ? e.touches[0] : e;
-    const {
-      position: { startX, startY }
-    } = this;
-    const deltaX = clientX - startX; //* dpr;
-    const deltaY = clientY - startY; //* dpr;
-    this.hitTarget.move({ x: deltaX, y: deltaY });
-    this.render();
-  };
-  onUp = (e: MouseEvent) => {
-    if (!this.model) return;
-    if (!this.isDown) return;
-    this.isDown = false;
-    this.$canvas.style.cursor = "";
-  };
-  onMouseWheel = (e: WheelEvent) => {
-    e.preventDefault();
-    const delta = limit(-1, 1)(-e.deltaY || -e.detail);
-    const { x, y } = this.getEventPoint(e);
-    const limitFn = limit(this.$options.minRate, this.$options.maxRate);
-    const step = this.$options.wheelSpeed * -delta;
-    const scale = +limitFn(this.model.scale + step).toFixed(2);
-    this.zoom({ x, y }, scale);
-  };
-
-  handlerCursor(e: TouchEvent & MouseEvent) {
-    if (!this.window) return;
-    const { clientX, clientY } = e.touches ? e.touches[0] : e;
-    const resizeRect = this.hitResizeRect(
-      this.getEventPoint({ clientX, clientY })
-    );
-    this.$canvas.style.cursor = resizeRect ? resizeRect.cursor : "";
-  }
-
-  // endregion
-
-  // endregion
-
-  // region helpers
-
-  getEventPoint({ clientX, clientY }: { clientX: number; clientY: number }) {
-    // 节流慢操作
-    clearTimeout(this.positionTimer);
-    if (!this.wrapBoundingRect) {
-      const rect = this.$canvas.getBoundingClientRect();
-      this.wrapBoundingRect = {
-        x: rect.left,
-        y: rect.top
-      };
-    }
-    const position = this.wrapBoundingRect;
-    const x = clientX - position.x; // * this.dpr;
-    const y = clientY - position.y; // * this.dpr;
-    this.positionTimer = window.setTimeout(() => {
-      this.wrapBoundingRect = null;
-    }, 200);
-    return { x, y };
-  }
-
-  hitResizeRect(point: { x: number; y: number }) {
-    if (!this.window.resizeable) return null;
-    const { resizeRect } = this.window;
-    return resizeRect.find((it: any) => isHit(point, it)) || null;
-  }
-
-  // endregion
-
-  // region 子组件相关
-  // 计算图片初始位置
-  computeModelOptions({ width, height }: { width: number; height: number }) {
-    const {
-      MODE,
-      dpr,
-      $options: { width: WIDTH, height: HEIGHT }
-    } = this;
-    // js计算有误差,简单取整
-    const imgRatio = +(width / height).toFixed(4);
-    const RATIO = +(WIDTH / HEIGHT).toFixed(4);
-    // 占满容器
-    let result: { x: number; y: number; width: number; height: number } = {
-      x: 0,
-      y: 0,
-      width: WIDTH,
-      height: HEIGHT
-    };
-
-    // 高度与容器相等
-    const fill_height = {
-      width: HEIGHT * imgRatio,
-      height: HEIGHT,
-      x: (WIDTH - HEIGHT * imgRatio) / 2,
-      y: 0
-    };
-
-    // 宽度与容器相等
-    const fill_width = {
-      width: WIDTH,
-      height: WIDTH / imgRatio,
-      y: (HEIGHT - WIDTH / imgRatio) / 2,
-      x: 0
-    };
-
-    // 当图片比例与容器不一致时，按照合适的方式布局图片
-    if (RATIO !== imgRatio) {
-      // 容器宽度不足,顶住高度
-      if (RATIO < imgRatio) {
-        result = fill_height;
-      }
-      // 容器高度不足,顶住宽度
-      else {
-        result = fill_width;
-      }
-    }
-
-    // contain模式应该顶住短边,正好反转
-    if (["contain"].includes(MODE)) {
-      result =
-        result === fill_height
-          ? fill_width
-          : result === fill_width
-          ? fill_height
-          : result;
-    }
-    return result;
   }
 
   createModel(cb: Function) {
     const {
-      $options: { url }
+      MODE: mode,
+      $options: { url, width, height }
     } = this;
     ImageModel.loadImage(url, img => {
       const options = {
-        img,
-        x: 0,
-        y: 0,
-        scale: 1,
-        ...this.computeModelOptions(img),
+        ...Cropper.fmtModelOptions({ img, mode, width, height }),
+        store: this.$store,
         moveable: true,
         resizeable: true,
-        store: this.$store,
-        free: true
+        img
       };
       this.model = new ImageModel(options);
       cb && cb();
@@ -405,23 +172,149 @@ export default class Cropper extends EmitAble {
     }
     this.window = new WindowModel({
       ...options,
-      resizeSize: this.$options.resizeSize,
       store: this.$store
     });
   }
 
-  zoom(point: { x: number; y: number }, scale: number) {
-    this.model.zoom(point, scale);
-    this.render();
+  // endregion
+
+  // region DOM相关
+
+  handlerDOM(el: HTMLElement | string) {
+    let dom: HTMLElement =
+      typeof el === "string" ? document.querySelector(el) : el;
+    if (!(dom instanceof Element))
+      throw new Error("el must be Element or domSelectors!");
+    const canvas = this.createCanvas();
+    renderBg(canvas);
+    dom.appendChild(canvas);
+    this.$el = dom;
+    this.handlerEvents();
   }
+
+  createCanvas() {
+    const { width, height } = this.$options;
+    const canvas = (this.$canvas = document.createElement("canvas"));
+    this.ctx = canvas.getContext("2d");
+    canvas.width = this.WIDTH;
+    canvas.height = this.HEIGHT;
+    canvas.style.width = width + "px";
+    canvas.style.height = height + "px";
+    return canvas;
+  }
+
+  handlerEvents() {
+    this.position = {
+      startX: 0,
+      startY: 0,
+      startDistance: 0
+    };
+    const el = this.$canvas;
+    listenWheel(el, this.onMouseWheel);
+    listen(el, EVENTS.down, this.onDown);
+    listen(el, EVENTS.move, this.onMove);
+    listen(el, EVENTS.up, this.onUp);
+    listen(el, "mouseleave", this.onUp);
+  }
+
+  // 管理cursor
+  handlerCursor(e: TouchEvent & MouseEvent) {
+    if (!this.window) return;
+    const { clientX, clientY } = e.touches ? e.touches[0] : e;
+    const point = this.getEventPoint({ clientX, clientY });
+    const resizeRect = this.hitResizeRect(point);
+    this.$canvas.style.cursor = resizeRect ? resizeRect.cursor : "";
+  }
+
+  // region DOM事件
+  onDown = (e: MouseEvent & TouchEvent) => {
+    if (!this.model) return;
+    this.isDown = true;
+
+    if (e.touches && e.touches.length > 1) {
+      const A = this.getEventPoint(e.touches[0]);
+      const B = this.getEventPoint(e.touches[1]);
+      const origin = getCenterBetween(A, B);
+      this.zoomOrigin = origin;
+      this.position.startDistance = getDistanceBetween(A, B);
+      console.log(origin);
+      return;
+    }
+
+    const point = e.touches ? e.touches[0] : e;
+
+    const { x, y } = this.getEventPoint(point);
+    this.position.startX = point.clientX;
+    this.position.startY = point.clientY;
+
+    const resizeRect = this.hitResizeRect({ x, y });
+    if (resizeRect) {
+      this.hitTarget = resizeRect;
+    } else {
+      const hitWindow = isHit({ x, y }, this.window.rect);
+      if (hitWindow && this.window.moveable) {
+        this.hitTarget = this.window;
+      } else {
+        this.hitTarget = this.model;
+      }
+    }
+    this.hitTarget.start();
+  };
+  onMove = (e: MouseEvent & TouchEvent) => {
+    this.handlerCursor(e);
+    if (!this.model) return;
+    if (!this.isDown) return;
+    if (!this.hitTarget) return;
+
+    e.preventDefault();
+    if (e.touches && e.touches.length > 1) {
+      this.onTouchZoom(e);
+      return;
+    }
+
+    const { clientX, clientY } = e.touches ? e.touches[0] : e;
+    const {
+      position: { startX, startY }
+    } = this;
+    const deltaX = clientX - startX; //* dpr;
+    const deltaY = clientY - startY; //* dpr;
+    this.hitTarget.move({ x: deltaX, y: deltaY });
+    this.render();
+  };
+  onUp = () => {
+    if (!this.model) return;
+    if (!this.isDown) return;
+    this.zoomOrigin = null;
+    this.isDown = false;
+    this.$canvas.style.cursor = "";
+  };
+  // 鼠标滚动
+  onMouseWheel = (e: WheelEvent) => {
+    e.preventDefault();
+    const direction = limit(-1, 1)(e.deltaY || e.detail);
+    const origin = this.getEventPoint(e);
+    this.zoom(origin, direction);
+  };
+
+  // 两指缩放
+  onTouchZoom = (e: TouchEvent) => {
+    const A = this.getEventPoint(e.touches[0]);
+    const B = this.getEventPoint(e.touches[1]);
+    const distance = getDistanceBetween(A, B);
+    const deltaDistance = distance - this.position.startDistance;
+    const direction = limit(-1, 1)(deltaDistance);
+    this.zoom(this.zoomOrigin, direction);
+  };
+
+  // endregion
 
   // endregion
 
   // region store 相关
-
-  handlerStore(opt: object) {
+  handlerStore(opt: Props) {
+    const window = Cropper.fmtWindowOptions(opt);
     this.$store = new Store(store);
-    this.initStore(opt);
+    this.initStore({ ...opt, window });
     this.mapStore();
   }
 
@@ -431,7 +324,6 @@ export default class Cropper extends EmitAble {
 
   mapStore() {
     this.$store.mapGetters(["HEIGHT", "WIDTH", "dpr", "MODE"]).call(this);
-    this.$store.mapState(["options"]).call(this);
     this.$store
       .mapState({
         $options: "options"
@@ -456,16 +348,9 @@ export default class Cropper extends EmitAble {
       setTimeout(() => {
         // 派发事件到外部,数据是model的尺寸以及与相对于截图框的位移
         this.fire("change", {
-          window: {
-            x: this.model.x - this.window.x,
-            y: this.model.y - this.window.y,
-            width: this.window.width,
-            height: this.window.height
-          },
-          model: {
-            height: this.model.height,
-            width: this.model.width
-          }
+          window: { ...this.window.rect },
+          model: { ...this.model.rect },
+          offset: this.window.getOffsetBy(this.model)
         });
       });
     });
@@ -539,6 +424,16 @@ export default class Cropper extends EmitAble {
 
   // endregion
 
+  // origin指缩放发生的坐标(canvas坐标),delta指方向
+  zoom(origin: { x: number; y: number }, direction: number) {
+    const { minRate, maxRate, wheelSpeed } = this.$options;
+    const limitFn = limit(minRate, maxRate);
+    const step = wheelSpeed * direction;
+    const scale = +limitFn(this.model.scale + step).toFixed(2);
+    this.model.zoom(origin, scale);
+    this.render();
+  }
+
   // region API
   getCropImage = ({
     mime,
@@ -549,44 +444,173 @@ export default class Cropper extends EmitAble {
   }): string => {
     const {
       model,
+      dpr,
       window: { x, y, width, height }
     } = this;
     const canvas =
       this.outputCanvas ||
       (this.outputCanvas = document.createElement("canvas"));
-    canvas.width = width;
-    canvas.height = height;
+    canvas.style.cssText = `width:${width}px;height:${height}px;`;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
     const ctx = canvas.getContext("2d");
     ctx.drawImage(
       model.img,
-      model.x - x,
-      model.y - y,
-      model.width,
-      model.height
+      (model.x - x) * dpr,
+      (model.y - y) * dpr,
+      model.width * dpr,
+      model.height * dpr
     );
     return canvas.toDataURL(mime, quality);
   };
 
   // 库本身不打包Promise
-  output = (options: OutputType) => {
-    // @ts-ignore
+  output = (options: OutputType = {}): Promise<string | Blob | Error> => {
     return new window.Promise((resolve, reject) => {
       try {
         options = { ...outputOptions, ...options };
-        let data: any = this.getCropImage({
+        let data: string | Blob = this.getCropImage({
           mime: options.mime,
           quality: options.quality
         });
         if (options.type === "blob") {
           data = dataURLtoBlob(data);
         }
-        options.success && options.success(data);
+        options.success(data);
         resolve(data);
       } catch (e) {
-        options.fail && options.fail(e);
+        options.fail(e);
         reject(e);
       }
     });
   };
+  // endregion
+
+  // region helpers
+
+  // 将鼠标/触摸点坐标转换为canvas内部坐标
+  getEventPoint({ clientX, clientY }: { clientX: number; clientY: number }) {
+    // 节流慢操作
+    clearTimeout(this.positionTimer);
+    if (!this.wrapBoundingRect) {
+      const rect = this.$canvas.getBoundingClientRect();
+      this.wrapBoundingRect = {
+        x: rect.left,
+        y: rect.top
+      };
+    }
+    const position = this.wrapBoundingRect;
+    const x = clientX - position.x;
+    const y = clientY - position.y;
+    this.positionTimer = window.setTimeout(() => {
+      this.wrapBoundingRect = null;
+    }, 200);
+    return { x, y };
+  }
+
+  // 检查是否命中截图框缩放节点
+  hitResizeRect(point: { x: number; y: number }) {
+    if (!this.window.resizeable) return null;
+    const { resizeRect } = this.window;
+    return resizeRect.find((it: any) => isHit(point, it)) || null;
+  }
+
+  // 格式化window的配置
+  static fmtWindowOptions({
+    window: win,
+    width,
+    height,
+    cropMode
+  }: Props): WindowProp {
+    if (win) {
+      win = { ...win };
+      win.x = limit(0, width)(win.x || 0);
+      win.y = limit(0, height)(win.y || 0);
+      win.width = limit(0, width - win.x)(win.width);
+      win.height = limit(0, height - win.y)(win.height);
+    } else {
+      win = {
+        x: 0,
+        y: 0,
+        width,
+        height,
+        moveable: true,
+        resizeable: true
+      };
+    }
+    win.moveable = win.moveable && ["window", "free-window"].includes(cropMode);
+    win.resizeable =
+      win.moveable && ["window", "free-window"].includes(cropMode);
+    win.free = win.free && ["free-window"].includes(cropMode);
+    win.resizeSize = (win.resizeSize || 5) * window.devicePixelRatio; // 高分屏下,放大window缩放点
+    return win;
+  }
+
+  // 格式化model的配置
+  static fmtModelOptions(options: {
+    img: HTMLImageElement;
+    mode: string;
+    width: number;
+    height: number;
+  }) {
+    // const {MODE, $options: {width, height}} = this;
+    const { img, mode, width, height } = options;
+    // js计算有误差,简单取整
+    const imgRatio = +(img.width / img.height).toFixed(4);
+    const RATIO = +(width / height).toFixed(4);
+    // 占满容器
+    let result: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      scale?: number;
+    } = {
+      x: 0,
+      y: 0,
+      width,
+      height
+    };
+
+    // 高度与容器相等
+    const fill_height = {
+      width: height * imgRatio,
+      height: height,
+      x: (width - height * imgRatio) / 2,
+      y: 0
+    };
+
+    // 宽度与容器相等
+    const fill_width = {
+      width,
+      height: width / imgRatio,
+      y: (height - width / imgRatio) / 2,
+      x: 0
+    };
+
+    // 当图片比例与容器不一致时，按照合适的方式布局图片
+    if (RATIO !== imgRatio) {
+      // 容器宽度不足,顶住高度
+      if (RATIO < imgRatio) {
+        result = fill_height;
+      }
+      // 容器高度不足,顶住宽度
+      else {
+        result = fill_width;
+      }
+    }
+
+    // contain模式应该顶住短边,正好反转
+    if (["contain"].includes(mode)) {
+      result =
+        result === fill_height
+          ? fill_width
+          : result === fill_width
+          ? fill_height
+          : result;
+    }
+    return { ...result, scale: result.height / img.height };
+  }
+
   // endregion
 }

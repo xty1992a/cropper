@@ -6,11 +6,30 @@
       name="viewport"
       content="width=device-width,initial-scale=1.0,user-scalable=no"
     />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/highlight.js@9.16.2/styles/atom-one-dark.css"
+    />
+    <script
+      type="text/javascript"
+      src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.15.10/highlight.min.js"
+    ></script>
+    <!--  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/eruda/1.5.8/eruda.min.js"></script>
+    <script type="text/javascript">
+      if (!/localhost/.test(location.href)) {
+        eruda && eruda.init();
+      }
+    </script>-->
     <title>Title</title>
     <style>
       body {
-        padding: 50px 20px 50px;
-        user-select: none;
+        max-width: 1200px;
+        margin: 20px auto;
+        padding: 0 10px;
+      }
+
+      canvas {
+        display: block;
       }
 
       section {
@@ -24,15 +43,19 @@
       section h3 {
         margin: 0;
         background-color: #f7f7f7;
+        padding: 10px;
       }
 
-      section > div {
+      .flex-block {
         display: flex;
         flex-wrap: wrap;
+        align-items: flex-end;
         padding: 15px;
       }
 
-      section > div > div {
+      .flex-item {
+        user-select: none;
+        overflow: hidden;
         margin-right: 15px;
         margin-bottom: 15px;
         box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
@@ -40,7 +63,5 @@
     </style>
     <style></style>
   </head>
-  <body>
-    <div id="app"></div>
-  </body>
+  <body></body>
 </html>

@@ -11,6 +11,8 @@ export type Props = {
   store: Store;
 };
 
+export interface IModel {}
+
 export default class Model {
   x: number;
   y: number;
@@ -70,7 +72,14 @@ export default class Model {
     this.commit();
   }
 
-  getRectBy(model: any) {}
+  getOffsetBy(model: Model) {
+    return {
+      x: this.x - model.x,
+      y: this.y - model.y,
+      width: this.width,
+      height: this.height
+    };
+  }
 
   mapStore() {
     this.$store.mapGetters(["HEIGHT", "WIDTH", "dpr", "MODE"]).call(this);

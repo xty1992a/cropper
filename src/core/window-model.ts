@@ -14,24 +14,9 @@ type WindowProps = {
   moveable?: boolean;
 };
 
-/*export type ResizeRect = {
-  move: (point: { x: number; y: number }) => void
-  start: ()=> void
-  x: number
-  y: number
-  cursor: string
-  width: number
-  height: number
-  parent: WindowModel
-  index: number
-}*/
-
 export default class WindowModel extends Model {
-  resizeSize: number;
   model: { [prop: string]: any };
   $props: WindowProps;
-
-  // resizeRect: ResizeRect[];
 
   get splitLine() {
     const {
@@ -56,11 +41,7 @@ export default class WindowModel extends Model {
   get resizeRect() {
     const {
       rect: { top, left, right, bottom },
-      resizeSize,
-      x,
-      y,
-      width,
-      height
+      $props: { resizeSize }
     } = this;
     const size = resizeSize / 2;
     const m_w = left + this.width / 2;
@@ -88,37 +69,20 @@ export default class WindowModel extends Model {
         new ResizeRect({
           ...it,
           index,
-          width: this.resizeSize,
-          height: this.resizeSize,
+          width: resizeSize,
+          height: resizeSize,
           parent: this
         })
     );
-    /*        .map((it, index) => ({
-              /!*      parentX: x,
-                    parentY: y,
-                    parentWidth: width,
-                    parentHeight: height,*!/
-              ...it,
-              index,
-              parent: this,
-              width: resizeSize,
-              height: resizeSize,
-              cursor: it.cursor + "-resize",
-              start() {},
-              move() {},
-              ...computeRect({...it, width: resizeSize, height: resizeSize})
-            }));*/
   }
 
   constructor(props: WindowProps) {
     super(props);
     this.$props = { ...props };
-    this.resizeSize = props.resizeSize;
     this.commit();
     this.mapStates();
     this.createLimiter();
     // this.createResizeRect();
-    console.log(props);
   }
 
   // region 计算属性
@@ -159,41 +123,6 @@ export default class WindowModel extends Model {
   }
 
   // endregion
-
-  /*
-
-    createResizeRect() {
-      const {
-        rect: {top, left, right, bottom},
-        resizeSize, x, y, width, height,
-        resizeable
-      } = this;
-      if (!resizeable) {
-        this.resizeRect = [];
-        return;
-      }
-      const size = resizeSize / 2;
-      const m_w = left + this.width / 2;
-      const m_h = top + this.height / 2;
-      const maps: { cursor: string, x: number, y: number }[] = [
-        {cursor: "nwse", x: left - size, y: top - size},
-        {cursor: "ns", x: m_w - size, y: top - size},
-        {cursor: "nesw", x: right - size, y: top - size},
-        {cursor: "ew", x: right - size, y: m_h - size},
-        {cursor: "nwse", x: right - size, y: bottom - size},
-        {cursor: "ns", x: m_w - size, y: bottom - size},
-        {cursor: "nesw", x: left - size, y: bottom - size},
-        {cursor: "ew", x: left - size, y: m_h - size}
-      ];
-      this.resizeRect = maps.map((it, index) => new ResizeRect({
-        ...it,
-        index,
-        width: this.resizeSize,
-        height: this.resizeSize,
-        parent: this,
-      }));
-    }
-  */
 
   createLimiter() {
     const {

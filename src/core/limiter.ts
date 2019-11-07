@@ -1,4 +1,4 @@
-import { limit, Rect } from "../helpers/utils";
+import { EmitAble, limit, Rect } from "../helpers/utils";
 import Store from "../helpers/store";
 
 type LimiterProps = {
@@ -18,7 +18,16 @@ type anyObj = {
   [prop: string]: any;
 };
 
-export default class Limiter {
+type Size = { width: number; height: number };
+type Point = { x: number; y: number };
+
+export interface ILimiter {
+  limitSize(size: Size): Size;
+
+  limitPosition(point: Point): Point;
+}
+
+export default class Limiter implements ILimiter {
   x: number;
   y: number;
   width: number;
@@ -35,6 +44,7 @@ export default class Limiter {
   isLimitInRect: boolean;
   keepRatio: boolean;
 
+  // region 计算属性
   get top() {
     return this.y;
   }
@@ -51,13 +61,7 @@ export default class Limiter {
     return this.x + this.width;
   }
 
-  /*  get maxModelWidth() {
-      return this.width * this.$options.maxRate;
-    }
-
-    get maxModelHeight() {
-      return this.height * this.$options.maxRate;
-    }*/
+  // endregion
 
   constructor(props: LimiterProps) {
     this.$store = props.store;
@@ -73,8 +77,9 @@ export default class Limiter {
     this.isLimitInRect = props.isLimitInRect;
   }
 
-  limitSize(size: { width: number; height: number }) {
+  limitSize(size: Size): Size {
     const { width, height, maxHeight, maxWidth, FREE } = this;
+    if (FREE) return size;
     let w = limit(width, maxHeight)(size.width);
     let h = limit(height, maxWidth)(size.height);
 
@@ -90,60 +95,25 @@ export default class Limiter {
       }
     }
     return {
-      width: FREE ? size.width : w,
-      height: FREE ? size.height : h
+      width: w,
+      height: h
     };
   }
 
-  limitPosition(rect: { x: number; y: number }) {
+  limitPosition(point: Point): Point {
     const { width, height, x, y, FREE } = this;
-    if (FREE) return rect;
+    if (FREE) return point;
     if (this.isLimitInRect) {
       return {
-        x: limit(x - (this.model.width - width), x)(rect.x),
-        y: limit(y - (this.model.height - height), y)(rect.y)
+        x: limit(x - (this.model.width - width), x)(point.x),
+        y: limit(y - (this.model.height - height), y)(point.y)
       };
     } else {
       return {
-        x: limit(x, width - this.window.width + x)(rect.x),
-        y: limit(y, height - this.window.height + y)(rect.y)
+        x: limit(x, width - this.window.width + x)(point.x),
+        y: limit(y, height - this.window.height + y)(point.y)
       };
     }
-  }
-
-  // 抽象的限制坐标方法
-  // 给定指定的坐标，给定一个
-  // rect
-  // 如果rect在限制器内部，则x,y的范围必须在rect内部
-  // 如果rect包裹限制器，则x,y的范围不可低于
-  limit(rect: Rect) {
-    let result: { x: number; y: number; width: number; height: number };
-    if (this.isLimitInRect) {
-      let x = limit(this.x - rect.width - this.width, this.x)(rect.x);
-      let y = limit(this.y - rect.height - this.height, this.y)(rect.y);
-      let width = limit(this.width, this.maxWidth)(rect.width);
-      let height = limit(this.height, this.maxHeight)(rect.height);
-      result = { x, y, width, height };
-    } else {
-      let x = limit(this.x, this.width - rect.width)(rect.x);
-      let y = limit(this.y, this.height - rect.height)(rect.y);
-      let width = limit(0, this.right - x)(rect.width);
-      let height = limit(0, this.bottom - y)(rect.height);
-      result = { x, y, width, height };
-    }
-
-    if (this.keepRatio) {
-      const ratio = +(rect.width / rect.height).toFixed(4);
-      const imgRatio = +(result.width / result.height).toFixed(4);
-      if (ratio !== imgRatio) {
-        if (ratio > imgRatio) {
-          result.width = result.height * ratio;
-        } else {
-          result.height = result.width / ratio;
-        }
-      }
-    }
-    return result;
   }
 
   mapStore() {
