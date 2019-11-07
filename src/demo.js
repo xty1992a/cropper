@@ -8,7 +8,8 @@ const optionList = [
   {
     width: 600,
     height: 375,
-    url: "static/field.jpg",
+    url:
+      "https://files.1card1.cn/mps/0/20191108/a57b4b34bbda4ff5bbe986f8a8be83c0.jpg",
     cropMode: "window",
     minRate: 0.1,
     devicePixelRatio: 3,
@@ -62,27 +63,22 @@ function preview(e, index) {
 const output = function(crop, index, e) {
   const output = document.getElementById("output" + index);
   const outputImage = output.querySelector("img");
-  crop.output({
-    success(data) {
-      if (e) {
-        output.style.width = e.window.width + "px";
-        output.style.height = e.window.height + "px";
-      } else {
-        output.style.width = crop.window.width + "px";
-        output.style.height = crop.window.height + "px";
-      }
-      if (outputImage.src.includes("blob")) {
-        URL.revokeObjectURL(outputImage.src);
-      }
-      if (data instanceof Blob) {
-        data = URL.createObjectURL(data);
-      }
-      outputImage.src = data;
-    },
-    fail(e) {
-      console.log("something error", e);
-    }
-  });
+  let data = crop.output();
+  if (e) {
+    output.style.width = e.window.width + "px";
+    output.style.height = e.window.height + "px";
+  } else {
+    output.style.width = crop.window.width + "px";
+    output.style.height = crop.window.height + "px";
+  }
+  if (outputImage.src.includes("blob")) {
+    URL.revokeObjectURL(outputImage.src);
+  }
+  if (data instanceof Blob) {
+    data = URL.createObjectURL(data);
+  }
+  console.log(data.substr(0, 100));
+  outputImage.src = data;
 };
 
 function createCrop(opt, index) {

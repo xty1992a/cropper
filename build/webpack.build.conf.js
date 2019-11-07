@@ -28,6 +28,6 @@ module.exports = () =>
     performance: false,
     optimization: {
       minimize: true
-    },
-    plugins: [new BundleAnalyzerPlugin()]
+    }
+    // plugins: [new BundleAnalyzerPlugin()]
   });

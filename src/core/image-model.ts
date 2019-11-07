@@ -142,6 +142,8 @@ export default class ImageModel extends Model {
     const img = new Image();
     listen(img, "load", () => cb(img));
     listen(img, "error", () => cb(null));
+    img.crossOrigin = "";
+    console.log(img.crossOrigin);
     img.src = url;
   }
 }

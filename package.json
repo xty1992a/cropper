@@ -5,6 +5,7 @@
   "main": "lib/cropper.js",
   "unpkg": "lib/cropper.js",
   "scripts": {
+    "pub": "npm publish --access public",
     "prepublishOnly": "npm run pretty && npm run build",
     "dev": "webpack-dev-server --config build/webpack.dev.conf.js",
     "build": "webpack --config build/webpack.build.conf.js",
@@ -18,7 +19,14 @@
     "src",
     "lib"
   ],
-  "keywords": [],
+  "keywords": [
+    "cropper",
+    "canvas",
+    "image",
+    "typescript",
+    "javascript",
+    "tiny"
+  ],
   "author": "TY-xie",
   "license": "ISC",
   "bugs": {
