@@ -1,4 +1,4 @@
-import { EmitAble, limit, Rect } from "../helpers/utils";
+import { limit } from "../helpers/utils";
 import Store from "../helpers/store";
 
 type LimiterProps = {
@@ -7,6 +7,8 @@ type LimiterProps = {
   keepRatio: boolean;
   maxHeight: number;
   maxWidth: number;
+  minHeight: number;
+  minWidth: number;
   x: number;
   y: number;
   height: number;
@@ -22,6 +24,15 @@ type Size = { width: number; height: number };
 type Point = { x: number; y: number };
 
 export interface ILimiter {
+  x: number;
+  y: number;
+  top: number;
+  left: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+
   limitSize(size: Size): Size;
 
   limitPosition(point: Point): Point;
@@ -31,10 +42,12 @@ export default class Limiter implements ILimiter {
   x: number;
   y: number;
   width: number;
-  modelWidth: number;
   height: number;
+  modelWidth: number;
   modelHeight: number;
   maxWidth: number;
+  minWidth: number;
+  minHeight: number;
   maxHeight: number;
   $store: Store;
   $options: anyObj;
@@ -67,21 +80,22 @@ export default class Limiter implements ILimiter {
     this.$store = props.store;
     this.mapStore();
     this.FREE = props.free;
-    this.x = props.x;
-    this.y = props.y;
-    this.width = props.width;
-    this.height = props.height;
-    this.keepRatio = props.keepRatio;
-    this.maxWidth = props.maxWidth;
-    this.maxHeight = props.maxHeight;
-    this.isLimitInRect = props.isLimitInRect;
+    Object.assign(this, props);
   }
 
   limitSize(size: Size): Size {
-    const { width, height, maxHeight, maxWidth, FREE } = this;
+    const {
+      width,
+      height,
+      minWidth,
+      minHeight,
+      maxHeight,
+      maxWidth,
+      FREE
+    } = this;
     if (FREE) return size;
-    let w = limit(width, maxHeight)(size.width);
-    let h = limit(height, maxWidth)(size.height);
+    let w = limit(Math.max(minWidth, width), maxWidth)(size.width);
+    let h = limit(Math.max(minHeight, height), maxHeight)(size.height);
 
     if (this.keepRatio) {
       const ratio = +(size.width / size.height).toFixed(4);

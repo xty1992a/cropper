@@ -5,13 +5,13 @@ import { ICropper, OutputType } from "../types/index";
 
 import {
   EmitAble,
+  getCenterBetween,
+  getDistanceBetween,
   isHit,
+  isMobile,
   listen,
   listenWheel,
-  isMobile,
-  renderBg,
-  getDistanceBetween,
-  getCenterBetween
+  renderBg
 } from "../helpers/utils";
 import { dataURLtoBlob, limit } from "../packages/utils";
 import ImageModel from "./image-model";
@@ -51,9 +51,7 @@ type Events = {
 const outputOptions: OutputType = {
   mime: "image/png",
   type: "base64",
-  quality: 1,
-  success: () => {},
-  fail: () => {}
+  quality: 1
 };
 
 const dftOptions: Props = {
@@ -178,7 +176,7 @@ export default class Cropper extends EmitAble implements ICropper {
 
   // endregion
 
-  // region DOM相关
+  // region DOM 相关
 
   handlerDOM(el: HTMLElement | string) {
     let dom: HTMLElement =
@@ -314,14 +312,16 @@ export default class Cropper extends EmitAble implements ICropper {
   handlerStore(opt: Props) {
     const window = Cropper.fmtWindowOptions(opt);
     this.$store = new Store(store);
-    this.initStore({ ...opt, window });
+    this.commitOptions({ ...opt, window });
     this.mapStore();
   }
 
-  initStore(options: object) {
+  // 将外部配置提交到store
+  commitOptions(options: object) {
     this.$store.commit("SET_OPTIONS", options);
   }
 
+  // 将store中的字段映射到本类中
   mapStore() {
     this.$store.mapGetters(["HEIGHT", "WIDTH", "dpr", "MODE"]).call(this);
     this.$store
@@ -424,17 +424,36 @@ export default class Cropper extends EmitAble implements ICropper {
 
   // endregion
 
+  // region API
+  // 在指定位置进行缩放
   // origin指缩放发生的坐标(canvas坐标),delta指方向
   zoom(origin: { x: number; y: number }, direction: number) {
-    const { minRate, maxRate, wheelSpeed } = this.$options;
-    const limitFn = limit(minRate, maxRate);
-    const step = wheelSpeed * direction;
-    const scale = +limitFn(this.model.scale + step).toFixed(2);
+    const { wheelSpeed } = this.$options;
+    const {
+      width,
+      height,
+      $props: { width: originWidth, height: originHeight }
+    } = this.model;
+    // 计算需要缩放到的面积
+    const newArea = width * height * (1 + wheelSpeed * direction);
+    // 计算它相对于初始面积的比值
+    const ratio = newArea / (originWidth * originHeight);
+    // 开根即宽高相对于初始尺寸的比值
+    const scale = Math.sqrt(ratio);
+    // 更新model
     this.model.zoom(origin, scale);
+    // 更新model后更新画面
     this.render();
   }
 
-  // region API
+  // 移动到指定位置
+  moveTo = (x: number, y: number) => {
+    if (!this.model) return;
+    this.model.moveTo({ x, y });
+    this.render();
+  };
+
+  // 获取截图窗内的图片，base64格式
   getCropImage = ({
     mime,
     quality
@@ -464,30 +483,25 @@ export default class Cropper extends EmitAble implements ICropper {
     return canvas.toDataURL(mime, quality);
   };
 
-  // 库本身不打包Promise
-  output = (options: OutputType = {}): Promise<string | Blob | Error> => {
-    return new window.Promise((resolve, reject) => {
-      try {
-        options = { ...outputOptions, ...options };
-        let data: string | Blob = this.getCropImage({
-          mime: options.mime,
-          quality: options.quality
-        });
-        if (options.type === "blob") {
-          data = dataURLtoBlob(data);
-        }
-        options.success(data);
-        resolve(data);
-      } catch (e) {
-        options.fail(e);
-        reject(e);
+  // 对getCropImage的包装，同时支持promise及callback两种方式返回
+  output = (options: OutputType = {}): string | Blob | Error => {
+    try {
+      options = { ...outputOptions, ...options };
+      let data: string | Blob = this.getCropImage({
+        mime: options.mime,
+        quality: options.quality
+      });
+      if (options.type === "blob") {
+        data = dataURLtoBlob(data);
       }
-    });
+      return data;
+    } catch (e) {
+      return e;
+    }
   };
   // endregion
 
   // region helpers
-
   // 将鼠标/触摸点坐标转换为canvas内部坐标
   getEventPoint({ clientX, clientY }: { clientX: number; clientY: number }) {
     // 节流慢操作
@@ -553,7 +567,6 @@ export default class Cropper extends EmitAble implements ICropper {
     width: number;
     height: number;
   }) {
-    // const {MODE, $options: {width, height}} = this;
     const { img, mode, width, height } = options;
     // js计算有误差,简单取整
     const imgRatio = +(img.width / img.height).toFixed(4);

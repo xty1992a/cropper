@@ -173,7 +173,9 @@ export default class WindowModel extends Model {
       keepRatio: false,
       store: this.$store,
       maxHeight: height,
-      maxWidth: width
+      maxWidth: width,
+      minHeight: 0,
+      minWidth: 0
     });
   }
 

@@ -33,20 +33,20 @@ const optionList = [
       width: 200,
       height: 275
     }
-  },
-  {
-    width: 300,
-    height: 375,
-    devicePixelRatio: 2,
-    url: "static/geralt_of_rivia.jpg",
-    cropMode: "cover"
-  },
-  {
-    width: 300,
-    height: 375,
-    url: "static/geralt_of_rivia.jpg",
-    cropMode: "contain"
   }
+  /* {
+     width: 300,
+     height: 375,
+     devicePixelRatio: 2,
+     url: "static/geralt_of_rivia.jpg",
+     cropMode: "cover"
+   },
+   {
+     width: 300,
+     height: 375,
+     url: "static/geralt_of_rivia.jpg",
+     cropMode: "contain"
+   }*/
 ];
 
 function preview(e, index) {
@@ -95,6 +95,7 @@ function createCrop(opt, index) {
   crop.on("change", e => {
     preview(e, index);
   });
+  return crop;
 }
 
 function main() {

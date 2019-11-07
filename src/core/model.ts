@@ -63,12 +63,17 @@ export default class Model {
 
   move(point: { x: number; y: number }) {
     if (!this.moveable) return;
-    point = this.limiter.limitPosition({
+    this.moveTo({
       x: point.x + this.endX,
       y: point.y + this.endY
     });
-    this.x = point.x;
-    this.y = point.y;
+  }
+
+  moveTo(position: { x: number; y: number }) {
+    if (!this.moveable) return;
+    position = this.limiter.limitPosition(position);
+    this.x = position.x;
+    this.y = position.y;
     this.commit();
   }
 

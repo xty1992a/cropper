@@ -100,8 +100,10 @@ export default class ImageModel extends Model {
       store: this.$store,
       isLimitInRect: true,
       keepRatio: true,
-      maxHeight: this.img.height * this.$options.maxRate,
-      maxWidth: this.img.width * this.$options.maxRate
+      maxHeight: this.$props.height * Math.sqrt(this.$options.maxRate),
+      maxWidth: this.$props.width * Math.sqrt(this.$options.maxRate),
+      minWidth: this.$props.width * Math.sqrt(this.$options.minRate),
+      minHeight: this.$props.height * Math.sqrt(this.$options.minRate)
     });
   }
 
