@@ -1,6 +1,6 @@
 import Model from "./model";
 import Limiter from "./limiter";
-import { listen } from "../packages/utils";
+import { listen } from "../helpers/utils";
 import Store from "../helpers/store";
 
 type ImageProps = {
@@ -29,6 +29,7 @@ export default class ImageModel extends Model {
   img: HTMLImageElement;
   scale: number;
   $props: ImageProps;
+  static roleName = "ImageModel";
 
   constructor(props: ImageProps) {
     super(props);

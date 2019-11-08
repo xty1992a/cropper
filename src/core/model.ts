@@ -11,15 +11,13 @@ export type Props = {
   store: Store;
 };
 
-export interface IModel {}
-
 export default class Model {
   x: number;
   y: number;
-  endX: number;
-  endY: number;
   height: number;
   width: number;
+  endX: number;
+  endY: number;
   resizeable: boolean;
   moveable: boolean;
   limiter: Limiter;

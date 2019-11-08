@@ -1,19 +1,19 @@
 // 未编译API,需要引入polyfill
 import "core-js";
-// import Cropper from "./packages/main";
+// import Cropper from "./prototype/main";
 import Cropper from "./core/cropper";
-import { debounce } from "./packages/utils";
+import { debounce } from "./helpers/utils";
 
 const optionList = [
   {
     width: 600,
     height: 375,
-    url:
-      "https://files.1card1.cn/mps/0/20191108/a57b4b34bbda4ff5bbe986f8a8be83c0.jpg",
+    // url:		"https://files.1card1.cn/mps/0/20191108/a57b4b34bbda4ff5bbe986f8a8be83c0.jpg",
+    url: "static/field.jpg",
     cropMode: "window",
     minRate: 0.1,
     devicePixelRatio: 3,
-    // wheelSpeed: 0.01,
+    // wheelSpeed: 1,
     // windowMoveable: false,
     window: {
       x: 50,
@@ -77,7 +77,6 @@ const output = function(crop, index, e) {
   if (data instanceof Blob) {
     data = URL.createObjectURL(data);
   }
-  console.log(data.substr(0, 100));
   outputImage.src = data;
 };
 
@@ -87,7 +86,7 @@ function createCrop(opt, index) {
     console.log("ready", crop);
     output(crop, index);
   });
-  crop.on("change", debounce(e => output(crop, index, e)));
+  crop.on("change", debounce(e => output(crop, index, e), 500));
   crop.on("change", e => {
     preview(e, index);
   });

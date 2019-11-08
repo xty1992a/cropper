@@ -1,7 +1,7 @@
 import Model from "./model";
 import Limiter from "./limiter";
 import Store from "../helpers/store";
-import { limit } from "../packages/utils";
+import { limit } from "../helpers/utils";
 
 type WindowProps = {
   x: number;
@@ -15,6 +15,7 @@ type WindowProps = {
 };
 
 export default class WindowModel extends Model {
+  static roleName = "WindowModel";
   model: { [prop: string]: any };
   $props: WindowProps;
 
@@ -179,10 +180,7 @@ export default class WindowModel extends Model {
     });
   }
 
-  resize(
-    { index, x, y }: { index: number; x: number; y: number },
-    target: { width: number; height: number }
-  ) {
+  resize({ index, x, y }: { index: number; x: number; y: number }) {
     const { width, height, minX, minY, maxX, maxY, maxWidth, maxHeight } = this;
     const limitHeight = limit(0, maxHeight);
     const limitWidth = limit(0, maxWidth);
@@ -267,23 +265,6 @@ export default class WindowModel extends Model {
   }
 }
 
-const computeRect = ({
-  x,
-  y,
-  width,
-  height
-}: {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}) => ({
-  top: y,
-  left: x,
-  right: x + width,
-  bottom: y + height
-});
-
 interface ResizeProps {
   cursor: string;
   x: number;
@@ -325,10 +306,7 @@ export class ResizeRect {
 
     let width = targetX - this.parent.rect.left;
     let height = targetY - this.parent.rect.top;
-    this.parent.resize(
-      { index: this.index, x: targetX, y: targetY },
-      { width, height }
-    );
+    this.parent.resize({ index: this.index, x: targetX, y: targetY });
   }
 
   get centerX() {

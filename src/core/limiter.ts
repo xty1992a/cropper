@@ -42,7 +42,9 @@ export default class Limiter implements ILimiter {
   x: number;
   y: number;
   width: number;
+  WIDTH: number;
   height: number;
+  HEIGHT: number;
   modelWidth: number;
   modelHeight: number;
   maxWidth: number;
@@ -91,20 +93,22 @@ export default class Limiter implements ILimiter {
       minHeight,
       maxHeight,
       maxWidth,
-      FREE
+      FREE,
+      WIDTH,
+      HEIGHT
     } = this;
     if (FREE) return size;
     let w = limit(Math.max(minWidth, width), maxWidth)(size.width);
     let h = limit(Math.max(minHeight, height), maxHeight)(size.height);
-
     if (this.keepRatio) {
-      const ratio = +(size.width / size.height).toFixed(4);
-      const imgRatio = +(w / h).toFixed(4);
-      if (ratio !== imgRatio) {
+      // 保持比例,且进入受限范围
+      if (w !== size.width && h !== size.height) {
+        const ratio = width / height;
+        const imgRatio = WIDTH / HEIGHT;
         if (ratio > imgRatio) {
-          w = h * ratio;
+          w = h * imgRatio;
         } else {
-          h = w / ratio;
+          h = w / imgRatio;
         }
       }
     }
@@ -131,13 +135,8 @@ export default class Limiter implements ILimiter {
   }
 
   mapStore() {
-    this.$store.mapGetters(["modelWidth", "modelHeight", "dpr"]).call(this);
-    this.$store
-      .mapState({
-        $options: "options",
-        model: "model",
-        window: "window"
-      })
-      .call(this);
+    this.$store.mapGetters(["WIDTH", "HEIGHT", "dpr"]).call(this);
+    this.$store.mapState(["model", "window"]).call(this);
+    this.$store.mapState({ $options: "options" }).call(this);
   }
 }

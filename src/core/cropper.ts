@@ -11,9 +11,10 @@ import {
   isMobile,
   listen,
   listenWheel,
-  renderBg
+  renderBg,
+  dataURLtoBlob,
+  limit
 } from "../helpers/utils";
-import { dataURLtoBlob, limit } from "../packages/utils";
 import ImageModel from "./image-model";
 import WindowModel, { ResizeRect } from "./window-model";
 
@@ -108,29 +109,31 @@ export default class Cropper extends EmitAble implements ICropper {
   // region 子组件相关
 
   handlerChildren() {
-    this.createModel(() => {
+    const {
+      MODE: mode,
+      $options: { url, width, height }
+    } = this;
+    ImageModel.loadImage(url, img => {
+      this.createModel(img);
       this.createWindow();
       this.render();
       this.fire("ready");
     });
   }
 
-  createModel(cb: Function) {
+  createModel(img: HTMLImageElement) {
     const {
       MODE: mode,
-      $options: { url, width, height }
+      $options: { width, height }
     } = this;
-    ImageModel.loadImage(url, img => {
-      const options = {
-        ...Cropper.fmtModelOptions({ img, mode, width, height }),
-        store: this.$store,
-        moveable: true,
-        resizeable: true,
-        img
-      };
-      this.model = new ImageModel(options);
-      cb && cb();
-    });
+    const options = {
+      ...Cropper.fmtModelOptions({ img, mode, width, height }),
+      store: this.$store,
+      moveable: true,
+      resizeable: true,
+      img
+    };
+    this.model = new ImageModel(options);
   }
 
   createWindow() {
