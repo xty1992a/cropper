@@ -81,9 +81,7 @@ export default class WindowModel extends Model {
     super(props);
     this.$props = { ...props };
     this.commit();
-    this.mapStates();
     this.createLimiter();
-    // this.createResizeRect();
   }
 
   // region 计算属性
@@ -258,10 +256,6 @@ export default class WindowModel extends Model {
       height: this.height,
       rect: { ...this.rect }
     });
-  }
-
-  mapStates() {
-    this.$store.mapState({}).call(this);
   }
 }
 

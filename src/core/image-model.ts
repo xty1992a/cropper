@@ -36,7 +36,6 @@ export default class ImageModel extends Model {
     this.$props = { ...dftOptions, ...props };
     this.scale = 1;
     this.img = props.img;
-    this.mapStates();
     this.commit();
     this.createLimiter();
   }
@@ -135,16 +134,11 @@ export default class ImageModel extends Model {
     this.commit();
   }
 
-  mapStates() {
-    this.$store.mapState({}).call(this);
-  }
-
   static loadImage(url: string, cb: ImgLoadCb) {
     const img = new Image();
     listen(img, "load", () => cb(img));
     listen(img, "error", () => cb(null));
-    img.crossOrigin = "";
-    console.log(img.crossOrigin);
+    img.crossOrigin = "anonymous";
     img.src = url;
   }
 }

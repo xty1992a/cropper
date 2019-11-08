@@ -103,22 +103,20 @@ export default class Cropper extends EmitAble implements ICropper {
     super();
     this.handlerStore({ ...dftOptions, ...options });
     this.handlerDOM(el);
-    this.handlerChildren();
+    this.handlerChildren(this.$options.url);
   }
 
   // region 子组件相关
 
-  handlerChildren() {
-    const {
-      MODE: mode,
-      $options: { url, width, height }
-    } = this;
-    ImageModel.loadImage(url, img => {
-      this.createModel(img);
-      this.createWindow();
-      this.render();
-      this.fire("ready");
-    });
+  handlerChildren(url: string) {
+    this.changeImage(url);
+  }
+
+  createChildren(img: HTMLImageElement) {
+    this.createModel(img);
+    this.createWindow();
+    this.render();
+    this.fire("ready");
   }
 
   createModel(img: HTMLImageElement) {
@@ -327,11 +325,7 @@ export default class Cropper extends EmitAble implements ICropper {
   // 将store中的字段映射到本类中
   mapStore() {
     this.$store.mapGetters(["HEIGHT", "WIDTH", "dpr", "MODE"]).call(this);
-    this.$store
-      .mapState({
-        $options: "options"
-      })
-      .call(this);
+    this.$store.mapState({ $options: "options" }).call(this);
   }
 
   // endregion
@@ -428,6 +422,19 @@ export default class Cropper extends EmitAble implements ICropper {
   // endregion
 
   // region API
+  changeImage(img: HTMLImageElement | string, callback?: Function) {
+    if (typeof img === "string") {
+      ImageModel.loadImage(img, image => {
+        if (!image) throw new Error(img + " is not valid image url!");
+        this.createChildren(image);
+      });
+      return;
+    }
+    if (!(img instanceof Image))
+      throw new Error("img must be Image or image url!");
+    this.createChildren(img);
+  }
+
   // 在指定位置进行缩放
   // origin指缩放发生的坐标(canvas坐标),delta指方向
   zoom(origin: { x: number; y: number }, direction: number) {

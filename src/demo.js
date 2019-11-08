@@ -34,20 +34,20 @@ const optionList = [
       width: 200,
       height: 275
     }
+  },
+  {
+    width: 300,
+    height: 375,
+    devicePixelRatio: 2,
+    url: "static/geralt_of_rivia.jpg",
+    cropMode: "cover"
+  },
+  {
+    width: 300,
+    height: 375,
+    url: "static/geralt_of_rivia.jpg",
+    cropMode: "contain"
   }
-  /* {
-     width: 300,
-     height: 375,
-     devicePixelRatio: 2,
-     url: "static/geralt_of_rivia.jpg",
-     cropMode: "cover"
-   },
-   {
-     width: 300,
-     height: 375,
-     url: "static/geralt_of_rivia.jpg",
-     cropMode: "contain"
-   }*/
 ];
 
 function preview(e, index) {
@@ -80,6 +80,20 @@ const output = function(crop, index, e) {
   outputImage.src = data;
 };
 
+function handlerFile(index, crop) {
+  const fileEl = document.getElementById("file" + index);
+  fileEl.addEventListener("change", e => {
+    const file = e.target.files[0];
+    if (!file || !/image/.test(file.type)) return;
+    const key = `__object_url__${index}__`;
+    window[key] && URL.revokeObjectURL(window[key]);
+    window[key] = URL.createObjectURL(file);
+    document.getElementById("preview" + index).querySelector("img").src =
+      window[key];
+    crop.changeImage(window[key]);
+  });
+}
+
 function createCrop(opt, index) {
   const crop = new Cropper(document.getElementById("crop" + index), opt);
   crop.on("ready", () => {
@@ -90,6 +104,7 @@ function createCrop(opt, index) {
   crop.on("change", e => {
     preview(e, index);
   });
+  handlerFile(index, crop);
   return crop;
 }
 
@@ -102,7 +117,7 @@ function main() {
 			<div class="flex-block">
 			  <div class="flex-item crop-wrap">
 				<div id="crop${index}"></div>
-				<h3>截图窗口</h3>
+				<h3>截图窗口 <input type="file" id="file${index}"></h3>
 			  </div>
 			  <div class="flex-item preview">
 				<div id="preview${index}" style="width: 0;height: 0;overflow:hidden;"><img src="${

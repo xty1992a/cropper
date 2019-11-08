@@ -85,13 +85,12 @@ export default class Model {
   }
 
   mapStore() {
+    const stateMap = {
+      $options: "options",
+      window: "window",
+      model: "model"
+    };
     this.$store.mapGetters(["HEIGHT", "WIDTH", "dpr", "MODE"]).call(this);
-    this.$store
-      .mapState({
-        $options: "options",
-        window: "window",
-        model: "model"
-      })
-      .call(this);
+    this.$store.mapState(stateMap).call(this);
   }
 }
