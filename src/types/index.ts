@@ -21,6 +21,9 @@ export interface ICropper {
 
   // 以某个坐标为中心，基于现有比例进行缩放，可能受缩放限制以及截图模式限制
   zoom(origin: { x: number; y: number }, direction: number): void;
+
+  // 更换截图
+  changeImage(img: HTMLImageElement | string, callback?: Function): void;
 }
 
 export type OutputType = {

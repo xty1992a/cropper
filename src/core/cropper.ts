@@ -427,12 +427,14 @@ export default class Cropper extends EmitAble implements ICropper {
       ImageModel.loadImage(img, image => {
         if (!image) throw new Error(img + " is not valid image url!");
         this.createChildren(image);
+        setTimeout(() => callback && callback());
       });
       return;
     }
     if (!(img instanceof Image))
       throw new Error("img must be Image or image url!");
     this.createChildren(img);
+    setTimeout(() => callback && callback());
   }
 
   // 在指定位置进行缩放
@@ -548,15 +550,15 @@ export default class Cropper extends EmitAble implements ICropper {
   }: Props): WindowProp {
     if (win) {
       win = { ...win };
-      win.x = limit(0, width)(win.x || 0);
+      win.x = limit(0, width)(win.x || width / 4);
       win.y = limit(0, height)(win.y || 0);
-      win.width = limit(0, width - win.x)(win.width);
-      win.height = limit(0, height - win.y)(win.height);
+      win.width = limit(0, width - win.x)(win.width || width / 2);
+      win.height = limit(0, height - win.y)(win.height || height);
     } else {
       win = {
-        x: 0,
+        x: width / 4,
         y: 0,
-        width,
+        width: width / 2,
         height,
         moveable: true,
         resizeable: true
