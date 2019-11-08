@@ -1,6 +1,6 @@
-### 轻量截图库
+## 轻量截图库
 
-#### 使用
+### 使用
 
 1. 安装: `npm install @redbuck/cropper` 或者 `yarn add @redbuck/cropper`.
 2. 引入:
@@ -11,14 +11,16 @@
       页面中添加`<script type="text/javascript" src="to/path/cropper.js"></script>`
 3. 使用:`const cropper = new Cropper(el, options)`.
 
-#### 参数
+---
+
+### 参数
 
 |    字段 |              类型 |    默认值 | 描述             |
 | ------: | ----------------: | --------: | ---------------- |
-|      el | `Element||string` | undefined | 截图组件挂载位置 |
+|      el | Element 丨 string | undefined | 截图组件挂载位置 |
 | options |            Object |        {} | 配置对象         |
 
-##### options
+#### options
 
 |             字段 |   类型 |                  默认值 |               描述 |
 | ---------------: | -----: | ----------------------: | -----------------: |
@@ -51,7 +53,9 @@
 - window, 显示截图框,截图框的移动限制在图片内(图片的缩放移动也受截图框的限制)
 - free-window,显示截图框,截图框的移动不受限制
 
-##### API
+---
+
+### API
 
 #### output 同步输出 window 区域的图片
 
