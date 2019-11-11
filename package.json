@@ -1,6 +1,6 @@
 {
   "name": "@redbuck/cropper",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "A tiny image cropper",
   "main": "lib/cropper.js",
   "unpkg": "lib/cropper.js",
