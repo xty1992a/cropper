@@ -99,16 +99,12 @@ export default class WindowModel extends Model {
 
   get maxX() {
     const { WIDTH, width, model } = this;
-    return this.FREE
-      ? WIDTH - width
-      : Math.min(WIDTH - width, model.width + model.x - width);
+    return this.FREE ? WIDTH - width : model.rect.right - model.rect.left;
   }
 
   get maxY() {
     const { HEIGHT, height, model } = this;
-    return this.FREE
-      ? HEIGHT - height
-      : Math.min(HEIGHT - height, model.height + model.y - height);
+    return this.FREE ? HEIGHT - height : model.rect.bottom - model.rect.top;
   }
 
   get maxWidth() {
@@ -189,6 +185,7 @@ export default class WindowModel extends Model {
 
     const newRight = width - newWidth - limitX(x) + x;
     const newBottom = height - newHeight - limitY(y) + y;
+    console.log(this.model.rect);
     switch (index) {
       case 0:
         this.height = newHeight;
@@ -226,10 +223,21 @@ export default class WindowModel extends Model {
         break;
     }
 
+    const size = this.limiter.limitSize({
+      width: this.width,
+      height: this.height
+    });
+    console.log(this.y, this.height, ">>>>>>>>>>");
+
     this.height = limitHeight(this.height);
     this.width = limitWidth(this.width);
+    // this.width = size.width;
+    // this.height = size.height;
+
     this.x = limitX(this.x);
     this.y = limitY(this.y);
+
+    console.log(this.y, this.height, "<<<<<<<<<<");
     this.commit();
   }
 

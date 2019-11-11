@@ -8,8 +8,9 @@ const optionList = [
   {
     width: 600,
     height: 375,
-    // url:		"https://files.1card1.cn/mps/0/20191108/a57b4b34bbda4ff5bbe986f8a8be83c0.jpg",
-    url: "static/field.jpg",
+    url:
+      "https://files.1card1.cn/mps/0/20191108/a57b4b34bbda4ff5bbe986f8a8be83c0.jpg",
+    // url: "static/field.jpg",
     cropMode: "window",
     minRate: 0.1,
     devicePixelRatio: 3,
