@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1.0,user-scalable=no"
+    />
+    <title>Title</title>
+  </head>
+  <body>
+    <div>
+      <h3>mask base clip</h3>
+      <canvas id="clip-cvs"></canvas>
+    </div>
+
+    <div>
+      <h3>mask base globalCompositeOperation</h3>
+      <canvas id="gco-cvs"></canvas>
+    </div>
+
+    <script type="text/javascript">
+      function loadImage(src) {
+        return new Promise(resolve => {
+          const img = new Image();
+          img.src = src;
+          img.addEventListener("load", () => resolve(img));
+          img.addEventListener("error", () => resolve(null));
+        });
+      }
+
+      async function clipMask({ img, WIDTH, HEIGHT, windowRect }) {
+        const cvs = document.getElementById("clip-cvs");
+        const ctx = cvs.getContext("2d");
+        const { x, y, width, height } = windowRect;
+        cvs.width = WIDTH;
+        cvs.height = HEIGHT;
+        ctx.drawImage(img, 0, 0, WIDTH, HEIGHT);
+        ctx.save();
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+        ctx.rect(x, y, width, height);
+        ctx.clip();
+        ctx.drawImage(img, 0, 0, WIDTH, HEIGHT);
+        ctx.restore();
+      }
+
+      async function gCOMask({ img, WIDTH, HEIGHT, windowRect }) {
+        const cvs = document.getElementById("gco-cvs");
+        const ctx = cvs.getContext("2d");
+        const { x, y, width, height } = windowRect;
+        cvs.width = WIDTH;
+        cvs.height = HEIGHT;
+        ctx.save();
+        ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+        ctx.fillRect(0, 0, WIDTH, HEIGHT); //绘制全屏半透明蒙层
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.fillStyle = "#000"; // 随便什么颜色都行
+        ctx.fillRect(x, y, width, height); // 这次绘制的区域将会变透明
+        ctx.restore();
+        ctx.globalCompositeOperation = "destination-over";
+        ctx.drawImage(img, 0, 0, WIDTH, HEIGHT);
+      }
+
+      !(async function() {
+        const imgUrl =
+          "https://fengyuanchen.github.io/cropperjs/images/picture.jpg";
+        const windowRect = {
+          x: 100,
+          y: 100,
+          width: 300,
+          height: 200
+        };
+        const img = await loadImage(imgUrl);
+        if (!img) return;
+
+        const WIDTH = img.width / 2;
+        const HEIGHT = img.height / 2;
+
+        const options = {
+          img,
+          WIDTH,
+          HEIGHT,
+          windowRect
+        };
+
+        clipMask(options);
+        gCOMask(options);
+      })();
+    </script>
+  </body>
+</html>

@@ -6,7 +6,7 @@ import {
   listen,
   listenWheel,
   renderBg
-} from "./utils.ts";
+} from "./utils";
 
 const dftOptions = {
   url: "", // 截图链接
@@ -400,15 +400,13 @@ export default class Cropper extends EmitAble {
         // 派发事件到外部,数据是model的尺寸以及与相对于截图框的位移
         const dpr = this.$options.devicePixelRatio;
         this.fire("change", {
-          window: {
+          window: { ...this.window.rect },
+          model: { ...this.model.rect },
+          offset: {
             x: (this.model.x - this.window.x) / dpr,
             y: (this.model.y - this.window.y) / dpr,
             width: this.window.width / dpr,
             height: this.window.height / dpr
-          },
-          model: {
-            height: this.model.height / dpr,
-            width: this.model.width / dpr
           }
         });
       });
@@ -498,20 +496,12 @@ export default class Cropper extends EmitAble {
 
   // 库本身不打包Promise
   output = options => {
-    return new window.Promise((resolve, reject) => {
-      try {
-        options = { ...outputOptions, ...options };
-        let data = this.getCropImage(options);
-        if (options.type === "blob") {
-          data = dataURLtoBlob(data);
-        }
-        options.success(data);
-        resolve(data);
-      } catch (e) {
-        options.fail(e);
-        reject(e);
-      }
-    });
+    options = { ...outputOptions, ...options };
+    let data = this.getCropImage(options);
+    if (options.type === "blob") {
+      data = dataURLtoBlob(data);
+    }
+    return data;
   };
 }
 

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Title</title>
+    <!--<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/eruda/1.5.8/eruda.min.js"></script>-->
+    <!--<script type="text/javascript">    // eruda && eruda.init();  </script>-->
+  </head>
+  <body>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+
+    <canvas id="cvs"></canvas>
+    <p>
+      <button id="reset">reset</button>
+    </p>
+
+    <script type="text/javascript">
+      // region different with zoom.html
+      const getDistanceBetween = (A, B) =>
+        Math.sqrt((A.x - B.x) ** 2 + (A.y - B.y) ** 2);
+      // 计算两坐标连线中点坐标
+      const getCenterBetween = (A, B) => ({
+        x: A.x + (B.x - A.x) / 2,
+        y: A.y + (B.y - A.y) / 2
+      });
+
+      // endregion
+
+      function loadImage(src) {
+        return new Promise(resolve => {
+          const img = new Image();
+          img.src = src;
+          img.addEventListener("load", () => resolve(img));
+          img.addEventListener("error", () => resolve(null));
+        });
+      }
+
+      const limit = (min, max) => val => Math.min(Math.max(val, min), max);
+
+      const imgUrl =
+        "https://files.1card1.cn/mps/0/20191111/2bd92a35ff644b478c6becdf753fc43a.jpg";
+
+      !(async function f() {
+        const cvs = document.getElementById("cvs");
+        const ctx = cvs.getContext("2d");
+
+        const img = await loadImage(imgUrl);
+        if (!img) return;
+
+        const ratio = img.width / img.height;
+        const WIDTH = document.body.clientWidth;
+        const HEIGHT = WIDTH / ratio;
+
+        cvs.width = WIDTH;
+        cvs.height = HEIGHT;
+
+        const current = { x: 0, y: 0, width: WIDTH, height: HEIGHT };
+        let scale = 1;
+
+        function zoom(position, direction) {
+          ctx.clearRect(0, 0, WIDTH, HEIGHT);
+          const origin = {
+            x: position.x - current.x,
+            y: position.y - current.y
+          };
+
+          scale += direction * 0.01;
+
+          const newWidth = WIDTH * scale;
+          const newHeight = HEIGHT * scale;
+
+          const dx =
+            current.x + (origin.x - (origin.x / current.width) * newWidth);
+          const dy =
+            current.y + (origin.y - (origin.y / current.height) * newHeight);
+
+          current.x = dx;
+          current.y = dy;
+          current.width = newWidth;
+          current.height = newHeight;
+          ctx.drawImage(img, dx, dy, newWidth, newHeight);
+        }
+
+        zoom({ x: 0, y: 0 }, 1);
+
+        cvs.addEventListener("mousewheel", e => {
+          e.preventDefault();
+          const direction = limit(-1, 1)(e.deltaY || e.detail);
+          const position = { x: e.clientX, y: e.clientY };
+          zoom(position, direction);
+        });
+
+        // region different with zoom.html
+        cvs.addEventListener("touchstart", e => {
+          e.preventDefault();
+          if (e.touches && e.touches.length > 1) {
+            const [A, B] = [...e.touches].map(it => ({
+              x: it.clientX,
+              y: it.clientY
+            }));
+            current.zoomOrigin = getCenterBetween(A, B);
+            current.startDistance = getDistanceBetween(A, B);
+          }
+        });
+
+        cvs.addEventListener("touchmove", e => {
+          e.preventDefault();
+          if (e.touches && e.touches.length > 1 && current.zoomOrigin) {
+            const [A, B] = [...e.touches].map(it => ({
+              x: it.clientX,
+              y: it.clientY
+            }));
+            const distance = getDistanceBetween(A, B);
+            const deltaDistance = distance - current.startDistance;
+            const direction = limit(-1, 1)(deltaDistance);
+            zoom(current.zoomOrigin, direction);
+            console.log(current.zoomOrigin, direction);
+          }
+        });
+
+        cvs.addEventListener("touchend", e => {
+          e.preventDefault();
+          current.zoomOrigin = null;
+        });
+
+        // endregion
+
+        document.getElementById("reset").addEventListener("click", function() {
+          scale = 1;
+          current.x = 0;
+          current.y = 0;
+          current.width = WIDTH;
+          current.height = HEIGHT;
+          zoom({ x: 0, y: 0 }, 1);
+        });
+      })();
+    </script>
+  </body>
+</html>
