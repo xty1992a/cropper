@@ -13,7 +13,6 @@ const optionList = [
     // url: "static/field.jpg",
     cropMode: "window",
     minRate: 0.1,
-    devicePixelRatio: 3,
     window: {
       width: 300
     }

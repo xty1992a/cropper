@@ -2,15 +2,12 @@ import "../helpers/polyfill";
 import store from "./store";
 import Store from "../helpers/store";
 import { ICropper, OutputType } from "../types/index";
+import EventManager from "./events-manager";
 
 import {
   EmitAble,
-  getCenterBetween,
-  getDistanceBetween,
   isHit,
   isMobile,
-  listen,
-  listenWheel,
   renderBg,
   dataURLtoBlob,
   limit
@@ -68,49 +65,37 @@ const dftOptions: Props = {
   devicePixelRatio: window.devicePixelRatio || 1 // dpr
 };
 
-const EVENTS: Events = {
-  down: isMobile ? "touchstart" : "mousedown",
-  move: isMobile ? "touchmove" : "mousemove",
-  up: isMobile ? "touchend" : "mouseup"
-};
 // endregion
 
 export default class Cropper extends EmitAble implements ICropper {
   // region types
   $store: Store;
   $options: Props;
-  position: { startX: number; startY: number; startDistance: number };
   $canvas: HTMLCanvasElement;
   outputCanvas: HTMLCanvasElement;
   $el: HTMLElement;
-  wrapBoundingRect: { x: number; y: number };
-  isHitWindow: boolean;
-  isDown: boolean;
   hitTarget: WindowModel | ImageModel | ResizeRect;
   window: WindowModel;
   model: ImageModel;
+  $eventManager: EventManager;
   HEIGHT: number;
   dpr: number;
   WIDTH: number;
   ctx: CanvasRenderingContext2D;
-  positionTimer: number;
   MODE: "window" | "free-window" | "cover" | "contain";
-  zoomOrigin: { x: number; y: number };
 
   // endregion
 
   constructor(el: HTMLElement | string, options: Props) {
     super();
-    this.handlerStore({ ...dftOptions, ...options });
-    this.handlerDOM(el);
-    this.handlerChildren(this.$options.url);
+    this.handleStore({ ...dftOptions, ...options });
+    this.handleDOM(el);
+    this.changeImage(this.$options.url);
   }
 
   // region 子组件相关
 
-  handlerChildren(url: string) {
-    this.changeImage(url);
-  }
+  handlerChildren(url: string) {}
 
   createChildren(img: HTMLImageElement) {
     this.createModel(img);
@@ -179,7 +164,7 @@ export default class Cropper extends EmitAble implements ICropper {
 
   // region DOM 相关
 
-  handlerDOM(el: HTMLElement | string) {
+  handleDOM(el: HTMLElement | string) {
     let dom: HTMLElement =
       typeof el === "string" ? document.querySelector(el) : el;
     if (!(dom instanceof Element))
@@ -188,7 +173,8 @@ export default class Cropper extends EmitAble implements ICropper {
     renderBg(canvas);
     dom.appendChild(canvas);
     this.$el = dom;
-    this.handlerEvents();
+    this.$eventManager = new EventManager({ el: this.$canvas });
+    this.handleEvents();
   }
 
   createCanvas() {
@@ -202,115 +188,44 @@ export default class Cropper extends EmitAble implements ICropper {
     return canvas;
   }
 
-  handlerEvents() {
-    this.position = {
-      startX: 0,
-      startY: 0,
-      startDistance: 0
-    };
-    const el = this.$canvas;
-    listenWheel(el, this.onMouseWheel);
-    listen(el, EVENTS.down, this.onDown);
-    listen(el, EVENTS.move, this.onMove);
-    listen(el, EVENTS.up, this.onUp);
-    listen(el, "mouseleave", this.onUp);
-  }
-
-  // 管理cursor
-  handlerCursor(e: TouchEvent & MouseEvent) {
-    if (!this.window) return;
-    const { clientX, clientY } = e.touches ? e.touches[0] : e;
-    const point = this.getEventPoint({ clientX, clientY });
-    const resizeRect = this.hitResizeRect(point);
-    this.$canvas.style.cursor = resizeRect ? resizeRect.cursor : "";
-  }
-
-  // region DOM事件
-  onDown = (e: MouseEvent & TouchEvent) => {
-    if (!this.model) return;
-    this.isDown = true;
-
-    if (e.touches && e.touches.length > 1) {
-      const A = this.getEventPoint(e.touches[0]);
-      const B = this.getEventPoint(e.touches[1]);
-      const origin = getCenterBetween(A, B);
-      this.zoomOrigin = origin;
-      this.position.startDistance = getDistanceBetween(A, B);
-      console.log(origin);
-      return;
-    }
-
-    const point = e.touches ? e.touches[0] : e;
-
-    const { x, y } = this.getEventPoint(point);
-    this.position.startX = point.clientX;
-    this.position.startY = point.clientY;
-
-    const resizeRect = this.hitResizeRect({ x, y });
-    if (resizeRect) {
-      this.hitTarget = resizeRect;
-    } else {
-      const hitWindow = isHit({ x, y }, this.window.rect);
-      if (hitWindow && this.window.moveable) {
-        this.hitTarget = this.window;
+  handleEvents() {
+    const event = this.$eventManager;
+    event.on("point-down", e => {
+      const { x, y } = e;
+      const resizeRect = this.hitResizeRect({ x, y });
+      if (resizeRect) {
+        this.hitTarget = resizeRect;
       } else {
-        this.hitTarget = this.model;
+        const hitWindow = isHit({ x, y }, this.window.rect);
+        if (hitWindow && this.window.moveable) {
+          this.hitTarget = this.window;
+        } else {
+          this.hitTarget = this.model;
+        }
       }
-    }
-    this.hitTarget.start();
-  };
-  onMove = (e: MouseEvent & TouchEvent) => {
-    this.handlerCursor(e);
-    if (!this.model) return;
-    if (!this.isDown) return;
-    if (!this.hitTarget) return;
-
-    e.preventDefault();
-    if (e.touches && e.touches.length > 1) {
-      this.onTouchZoom(e);
-      return;
-    }
-
-    const { clientX, clientY } = e.touches ? e.touches[0] : e;
-    const {
-      position: { startX, startY }
-    } = this;
-    const deltaX = clientX - startX; //* dpr;
-    const deltaY = clientY - startY; //* dpr;
-    this.hitTarget.move({ x: deltaX, y: deltaY });
-    this.render();
-  };
-  onUp = () => {
-    if (!this.model) return;
-    if (!this.isDown) return;
-    this.zoomOrigin = null;
-    this.isDown = false;
-    this.$canvas.style.cursor = "";
-  };
-  // 鼠标滚动
-  onMouseWheel = (e: WheelEvent) => {
-    e.preventDefault();
-    const direction = limit(-1, 1)(e.deltaY || e.detail);
-    const origin = this.getEventPoint(e);
-    this.zoom(origin, direction);
-  };
-
-  // 两指缩放
-  onTouchZoom = (e: TouchEvent) => {
-    const A = this.getEventPoint(e.touches[0]);
-    const B = this.getEventPoint(e.touches[1]);
-    const distance = getDistanceBetween(A, B);
-    const deltaDistance = distance - this.position.startDistance;
-    const direction = limit(-1, 1)(deltaDistance);
-    this.zoom(this.zoomOrigin, direction);
-  };
-
-  // endregion
+      this.hitTarget.start();
+    });
+    event.on("point-move", e => {
+      const { deltaX: x, deltaY: y } = e;
+      this.hitTarget.move({ x, y });
+      this.render();
+    });
+    event.on("mouse-move", e => {
+      const resizeRect = this.hitResizeRect(e);
+      this.$canvas.style.cursor = resizeRect ? resizeRect.cursor : "";
+    });
+    event.on("point-up", e => {
+      console.log("point-up", e);
+    });
+    event.on("zoom", e => {
+      this.zoom(e.origin, e.direction);
+    });
+  }
 
   // endregion
 
   // region store 相关
-  handlerStore(opt: Props) {
+  handleStore(opt: Props) {
     const window = Cropper.fmtWindowOptions(opt);
     this.$store = new Store(store);
     this.commitOptions({ ...opt, window });
@@ -466,13 +381,7 @@ export default class Cropper extends EmitAble implements ICropper {
   };
 
   // 获取截图窗内的图片，base64格式
-  getCropImage = ({
-    mime,
-    quality
-  }: {
-    mime: string;
-    quality: number;
-  }): string => {
+  getCropImage = ({ mime, quality }: OutputType): string => {
     const {
       model,
       dpr,
@@ -514,25 +423,6 @@ export default class Cropper extends EmitAble implements ICropper {
   // endregion
 
   // region helpers
-  // 将鼠标/触摸点坐标转换为canvas内部坐标
-  getEventPoint({ clientX, clientY }: { clientX: number; clientY: number }) {
-    // 节流慢操作
-    clearTimeout(this.positionTimer);
-    if (!this.wrapBoundingRect) {
-      const rect = this.$canvas.getBoundingClientRect();
-      this.wrapBoundingRect = {
-        x: rect.left,
-        y: rect.top
-      };
-    }
-    const position = this.wrapBoundingRect;
-    const x = clientX - position.x;
-    const y = clientY - position.y;
-    this.positionTimer = window.setTimeout(() => {
-      this.wrapBoundingRect = null;
-    }, 200);
-    return { x, y };
-  }
 
   // 检查是否命中截图框缩放节点
   hitResizeRect(point: { x: number; y: number }) {
@@ -542,12 +432,8 @@ export default class Cropper extends EmitAble implements ICropper {
   }
 
   // 格式化window的配置
-  static fmtWindowOptions({
-    window: win,
-    width,
-    height,
-    cropMode
-  }: Props): WindowProp {
+  static fmtWindowOptions(options: Props): WindowProp {
+    let { window: win, width, height, cropMode } = options;
     if (win) {
       win = { ...win };
       win.x = limit(0, width)(win.x || width / 4);

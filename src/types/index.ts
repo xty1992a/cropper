@@ -31,3 +31,7 @@ export type OutputType = {
   type?: string;
   quality?: number;
 };
+
+export type AnyObj = {
+  [prop: string]: any;
+};

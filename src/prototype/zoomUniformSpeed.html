@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Title</title>
+  </head>
+  <body>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+
+    <canvas id="cvs"></canvas>
+    <p>
+      <button id="reset">reset</button>
+    </p>
+
+    <script type="text/javascript">
+      function loadImage(src) {
+        return new Promise(resolve => {
+          const img = new Image();
+          img.src = src;
+          img.addEventListener("load", () => resolve(img));
+          img.addEventListener("error", () => resolve(null));
+        });
+      }
+
+      const limit = (min, max) => val => Math.min(Math.max(val, min), max);
+
+      const imgUrl =
+        "https://files.1card1.cn/mps/0/20191111/2bd92a35ff644b478c6becdf753fc43a.jpg";
+
+      !(async function f() {
+        const cvs = document.getElementById("cvs");
+        const ctx = cvs.getContext("2d");
+
+        const img = await loadImage(imgUrl);
+        if (!img) return;
+        const WIDTH = (cvs.width = img.width / 2);
+        const HEIGHT = (cvs.height = img.height / 2);
+
+        const current = { x: 0, y: 0, width: WIDTH, height: HEIGHT };
+        let scale = 1;
+
+        function zoom(position, direction) {
+          ctx.clearRect(0, 0, WIDTH, HEIGHT);
+          const origin = {
+            x: position.x - current.x,
+            y: position.y - current.y
+          };
+
+          scale += direction * 0.01;
+
+          const newWidth = WIDTH * Math.sqrt(scale);
+          const newHeight = HEIGHT * Math.sqrt(scale);
+
+          const dx =
+            current.x + (origin.x - (origin.x / current.width) * newWidth);
+          const dy =
+            current.y + (origin.y - (origin.y / current.height) * newHeight);
+
+          current.x = dx;
+          current.y = dy;
+          current.width = newWidth;
+          current.height = newHeight;
+          ctx.drawImage(img, dx, dy, newWidth, newHeight);
+        }
+
+        zoom({ x: 0, y: 0 }, 1);
+
+        cvs.addEventListener("mousewheel", e => {
+          e.preventDefault();
+          const direction = limit(-1, 1)(e.deltaY || e.detail);
+          const position = { x: e.clientX, y: e.clientY };
+          zoom(position, direction);
+        });
+
+        document.getElementById("reset").addEventListener("click", function() {
+          scale = 1;
+          current.x = 0;
+          current.y = 0;
+          current.width = WIDTH;
+          current.height = HEIGHT;
+          zoom({ x: 0, y: 0 }, 1);
+        });
+      })();
+    </script>
+  </body>
+</html>

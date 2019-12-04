@@ -19,7 +19,7 @@ module.exports = (env, argv) => {
       contentBase: path.resolve(__dirname, ".."),
       compress: true,
       hot: true,
-      port: 8088,
+      port: 8089,
       host: "localhost",
       publicPath: "/",
       disableHostCheck: true

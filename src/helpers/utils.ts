@@ -70,7 +70,7 @@ type TaskContainer = {
 
 type task = EventListener[];
 
-interface EventListener {
+export interface EventListener {
   (payload?: any): any;
 }
 
@@ -90,6 +90,15 @@ export class EmitAble {
   fire(event: string, payload?: any) {
     const task = this._task[event] || [];
     task.forEach(callback => callback(payload));
+  }
+
+  off(event: string, callback: EventListener) {
+    const task = this._task[event] || [];
+    this._task[event] = task.filter(cb => cb !== callback);
+  }
+
+  clear(event: string) {
+    this._task[event] = null;
   }
 }
 
